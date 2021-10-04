@@ -1,0 +1,44 @@
+test
+
+conditionals {
+	if:if
+	elif:elif
+	else:else
+}
+
+blocks:"brackets"
+comments:"//"
+funcdef:"func"
+selfref:"self"
+newline:"\n"
+
+operators {
+	+:+
+	-:-
+	*:*
+	/:/
+	&:&
+	|:|
+	!:!
+	%:%
+	^:^
+}
+
+builtins {
+	str:string
+	int:int
+	float:float
+	bool:bool
+	list:array
+	dict:map
+}
+
+str {
+	isdigit:isdigit
+	isalpha:isalpha
+	upper:toUpper
+	lower:toLower
+}
+
+output:"print"
+input:"input"

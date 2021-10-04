@@ -1,0 +1,10 @@
+func hw (n) {
+	print(n)
+	print("Hello, World!")
+	return "repeated twice"
+}
+
+hw alias wh
+
+var = wh("argument")
+print(var*2, True ^ True)
