@@ -6,5 +6,13 @@ func hw (n) {
 
 hw alias wh
 
-var = wh("argument")
-print(var*2, True ^ True)
+//hw("test")
+
+var = hw("testarg")
+var *= 2
+
+boolean = "x" == "y"
+//boolean = hash(0)
+
+//var = wh("argument")
+print(var, ! boolean)

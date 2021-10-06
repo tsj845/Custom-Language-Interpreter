@@ -140,14 +140,6 @@ class Runner ():
 		self.comment = searcher.findvalue("comments")
 		# the keyword used to define functions
 		self.funcdef = searcher.findvalue("funcdef")
-		self.strings = ('"', "'")
-		self.replacements = {
-			self.printline:"print",
-			self.inputline:"input"
-		}
-		self.replacements.update(self.conditions)
-		self.replacements.update(self.operators)
-		self.replacements.update(self.logic)
 		# functions, maps from a name to the start and end lines of the function
 		self.funcs = {}
 		# function args
@@ -164,12 +156,6 @@ class Runner ():
 		self.funclines = []
 		# variables specific to the local namespace
 		self.localvars = {}
-		# used to give "exec" and "eval" access to functions and variables
-		self.access = {
-			"print":print,
-			"input":input,
-			"vars":self.vars
-		}
 		# the names of all funcitons in program
 		self.funcnames = [
 			"print",
@@ -179,41 +165,45 @@ class Runner ():
 		self.builtins = {
 			"print":print,
 			"input":input,
+			"hash":hash,
 		}
 		# statements
 		self.statements = list(self.conditions.keys())
 		self.statements.extend(("alias", "return"))
 		# the line the interpreter is currently executing
 		self.executionline = 0
+	def listprops (self):
+		d = self.__dict__
+		for key in list(d.keys()):
+			print(key, d[key])
 	def ERROR (self, errorcode):
 		# error code for unclosed string
 		if errorcode == 0:
-			raise Exception("Unclosed String")
+			raise SyntaxError("Unclosed String")
 		# error code for unmatched parentheses
 		elif errorcode == 1:
-			raise Exception("Unmatched Parentheses")
+			raise SyntaxError("Unmatched Parentheses")
 		# error code for unmatched square brackets
 		elif errorcode == 2:
-			raise Exception("Unmatched Square Brackets")
+			raise SyntaxError("Unmatched Square Brackets")
 		# error code for unmatched curly brackers
 		elif errorcode == 3:
-			raise Exception("Unmatched Curly Brackets")
+			raise SyntaxError("Unmatched Curly Brackets")
 		# error code for redundant function definition
 		elif errorcode == 4:
-			raise Exception("Function Already Defined")
+			raise NameError("Function Already Defined")
 		# error code for attempting to set something other than a reference
 		elif errorcode == 5:
-			raise Exception("Invalid Assignment")
-		# error code for invalid arguments for a return statement
+			raise SyntaxError("Invalid Assignment")
+		# error code for undefined variable
 		elif errorcode == 6:
-			raise Exception("Invalid Return Arguments")
+			raise NameError("Undefined Variable Name")
 	# splits the code into lines
 	def breaklines (self, code):
 		"""
 		this function splits to code by newlines then joins the segments that were actually strings, this allows the programmer to use newlines within strings
 		"""
 		code = code.split(self.newline)
-		# print(code)
 		isstr = False
 		inlen = len(code)-1
 		for i in range(len(code)):
@@ -221,7 +211,6 @@ class Runner ():
 			if i > len(code)-1:
 				break
 			line = code[i]
-			# print(i, isstr, line.rstrip("\n"))
 			if line.count('"') % 2 != 0:
 				if isstr:
 					line = self.newline + code.pop(i+1)
@@ -254,12 +243,10 @@ class Runner ():
 			if self.comment in test:
 				if test.index(self.comment) == 0:
 					break
-			# print(i)
 			# resets the part
 			part = ""
 			# gets the current character
 			chr = line[i]
-			# print(chr)
 			# token type defaults to invalid
 			type = INV
 			# if the character is a digit
@@ -351,7 +338,7 @@ class Runner ():
 							# ignore the next character
 							cont = True
 				# if the character is a logical operator
-				elif chr in "^%":
+				elif chr in "^%&|!":
 					# type is logical
 					type = LOG
 					# value is character
@@ -370,6 +357,16 @@ class Runner ():
 							# value is equals
 							part = "=="
 							# ignore the next character
+							cont = True
+				# if the character is a comparason
+				elif chr in "<>":
+					# type is equality
+					type = EQU
+					# value is character
+					part = chr
+					if i < len(line)-1:
+						if line[i+1] == "=":
+							part += "="
 							cont = True
 				# if the character is a squar bracket
 				elif chr in "[]":
@@ -442,111 +439,344 @@ class Runner ():
 				self.funcs[name] = (start, i)
 				self.funcnames.append(name)
 				self.funcargs[name] = args
-	# processes tokens for return
-	def processreturn (self, tokens):
-		# the final value to return
-		val = None
-		cont = 0
-		# replaces references
-		for i in range(len(tokens)):
-			token = tokens[i]
-			if token.type == REF:
-				if token.value not in self.vars:
+	def evalpar (self, tokens, sliceind, inreturn=False):
+		tokenslice = tokens[sliceind+1:]
+		notdone = True
+		while notdone:
+			notdone = False
+			for i in range(len(tokenslice)):
+				token = tokenslice[i]
+				if token.type == PAR:
+					if token.value == "(":
+						tokenslice = tokenslice[:i].extend(self.evalpar(tokenslice, i, inreturn))
+						notdone = True
+						break
+					else:
+						tokenslice.pop(i)
+						return tokenslice
+				elif token.type == ASS:
+					v = token.value
+					if tokenslice[i-1].type != REF:
+						self.ERROR(5)
+					if tokenslice[i+1].type == REF:
+						usevars = True
+						v = tokenslice[i+1].value
+						if inreturn:
+							if v in self.localvars:
+								usevars = False
+						if usevars:
+							if v not in self.vars:
+								if v not in self.localvars:
+									self.ERROR(6)
+								usevars = False
+						if usevars:
+							tokenslice[i+1] = self.vars[v]
+						else:
+							tokenslice[i+1] = self.localvars[v]
+					value = "\x89"
+					if tokenslice[i+1].type == PAR and tokenslice[i+1].value == "(":
+						calc = self.evalpar(tokenslice, i+1, inreturn)
+						tokenslice = tokenslice[:i+1]
+						tokenslice.extend(calc)
+					if v == "=":
+						value = tokenslice[i+1].detokenize()
+					elif v == "+=":
+						value = self.vars[tokenslice[i-1].value].detokenize() + tokenslice[i+1].detokenize()
+					elif v == "-=":
+						value = self.vars[tokenslice[i-1].value].detokenize() - tokenslice[i+1].detokenize()
+					elif v == "*=":
+						value = self.vars[tokenslice[i-1].value].detokenize() * tokenslice[i+1].detokenize()
+					elif v == "/=":
+						value = self.vars[tokenslice[i-1].value].detokenize() / tokenslice[i+1].detokenize()
+					if type(value) == str:
+						value = '"' + value + '"'
+					else:
+						value = str(value)
+					value = self.tokenize(value)[0]
+					namespace = self.vars
+					if inreturn:
+						namespace = self.localvars
+					namespace[tokenslice[i-1].value] = value
+					tokenslice[i-1] = value
+					tokenslice.pop(i)
+					tokenslice.pop(i)
+					notdone = True
+					break
+				elif token.type == MAT:
+					if tokenslice[i+1].type == PAR and tokenslice[i+1].value == "(":
+						calc = self.evalpar(tokenslice, i+1, inreturn)
+						tokenslice = tokenslice[:i+1]
+						tokenslice.extend(calc)
+					v = token.value
+					calc = "\x89"
+					if v == "+":
+						calc = tokenslice[i-1].detokenize() + tokenslice[i+1].detokenize()
+					elif v == "-":
+						calc = tokenslice[i-1].detokenize() - tokenslice[i+1].detokenize()
+					elif v == "*":
+						calc = tokenslice[i-1].detokenize() * tokenslice[i+1].detokenize()
+					elif v == "/":
+						calc = tokenslice[i-1].detokenize() / tokenslice[i+1].detokenize()
+					if type(calc) == str:
+						calc = '"' + calc + '"'
+					else:
+						calc = str(calc)
+					tokenslice[i-1] = self.tokenize(calc)[0]
+					tokenslice.pop(i)
+					tokenslice.pop(i)
+					notdone = True
+					break
+				elif token.type == FUN:
+					val, end = self.hrunfunc(tokenslice, i)
+					newtokens = tokenslice[:i]
+					newtokens.append(val)
+					newtokens.extend(tokenslice[end:])
+					tokenslice = newtokens
+					notdone = True
+					break
+				elif token.type == LOG:
+					if tokenslice[i+1].type == REF:
+						usevars = True
+						v = tokenslice[i+1].value
+						if inreturn:
+							if v in self.localvars:
+								usevars = False
+						if usevars:
+							if v not in self.vars:
+								if v not in self.localvars:
+									self.ERROR(6)
+								usevars = False
+						if usevars:
+							tokenslice[i+1] = self.vars[v]
+						else:
+							tokenslice[i+1] = self.localvars[v]
+					v = token.value
+					if v == "!":
+						tokenslice[i] = self.tokenize(str(not tokenslice[i+1].detokenize()))[0]
+						notdone = True
+						break
+					value = None
+					v1 = tokenslice[i-1].detokenize()
+					v2 = tokenslice[i+1].detokenize()
+					if v == "^":
+						value = v1 ^ v2
+					elif v == "^":
+						value = v1 % v2
+					elif v == "&":
+						value = v1 and v2
+					elif v == "|":
+						value = v1 or v2
+					tokenslice[i-1] = self.tokenize(str(value))[0]
+					tokenslice.pop(i)
+					tokenslice.pop(i)
+					notdone = True
+					break
+				else:
 					continue
-				tokens[i] = self.vars[token.value]
-		for i in range(len(tokens)):
-			if cont > 0:
-				cont -= 1
-				continue
-			token = tokens[i]
-			if token.type == INV:
-				continue
-			elif token.type == KEY:
-				self.ERROR(6)
-			elif token.type == ASS:
-				self.ERROR(6)
-			elif token.type == MAT:
-				calc = eval(tokens[i-1].value+token.value+tokens[i+1].value)
-				if type(calc) == str:
-					calc = '"' + calc + '"'
-				tokens[i-1] = self.tokenize(calc)[0]
-				if self.executionline == 11:
-					print(tokens[i-1])
-				cont = 1
-			elif token.type == FUN:
-				if i < len(tokens)-1:
-					val, igc = self.hrunfunc(tokens, i)
-					tokens[i] = val
-					cont = igc
-		if val == None and len(tokens) > 0:
-			val = tokens[0]
-		return True, val
-		# return True, self.tokenize(str(val))
-	# runs the given line of code
-	def runline (self, line):
-		# strips leading tabs
+		return tokenslice
+	def evaltokens (self, tokens, inreturn=False):
+		notdone = True
+		while notdone:
+			notdone = False
+			for i in range(len(tokens)):
+				token = tokens[i]
+				if token.value == "/":
+					if i < len(tokens)-1:
+						if tokens[i+1].value == "/":
+							break
+				if token.type == PAR and token.value == "(":
+					tokens[i] = self.evalpar(tokens, i, inreturn)[0]
+				elif token.type == FUN:
+					if i < len(tokens)-1:
+						if tokens[i+1].type == PAR and tokens[i+1].value == "(":
+							val, end = self.hrunfunc(tokens, i)
+							newtokens = tokens[:i]
+							if val != None:
+								newtokens.append(val)
+							newtokens.extend(tokens[end:])
+							tokens = newtokens
+							notdone = True
+							break
+				elif token.type == KEY:
+					if token.value == "alias":
+						self.funcaliases[tokens[i+1].value] = tokens[i-1].value
+						self.funcnames.append(tokens[i+1].value)
+						tokens.pop(i-1)
+						tokens.pop(i-1)
+						tokens.pop(i-1)
+						notdone = True
+						break
+					elif token.value == "return":
+						obj = self.evaltokens(tokens[i+1:], inreturn)
+						return obj
+				elif token.type == ASS:
+					v = token.value
+					if tokens[i-1].type != REF:
+						self.ERROR(5)
+					if tokens[i+1].type == REF:
+						usevars = True
+						v = tokens[i+1].value
+						if inreturn:
+							if v in self.localvars:
+								usevars = False
+						if usevars:
+							if v not in self.vars:
+								if v not in self.localvars:
+									self.ERROR(6)
+								usevars = False
+						if usevars:
+							tokens[i+1] = self.vars[v]
+						else:
+							tokens[i+1] = self.localvars[v]
+					if tokens[i+1].type == FUN:
+						if tokens[i+2].type == PAR and tokens[i+2].value == "(":
+							val, end = self.hrunfunc(tokens, i+1)
+							newtokens = tokens[:i+1]
+							if val != None:
+								newtokens.append(val)
+							newtokens.extend(tokens[end+i+3:])
+							tokens = newtokens
+					value = "\x89"
+					if tokens[i+1].type == PAR and tokens[i+1].value == "(":
+						calc = self.evalpar(tokens, i+1, inreturn)
+						tokens = tokens[:i+1]
+						tokens.extend(calc)
+					if v == "=":
+						value = tokens[i+1].detokenize()
+					elif v == "+=":
+						value = self.vars[tokens[i-1].value].detokenize() + tokens[i+1].detokenize()
+					elif v == "-=":
+						value = self.vars[tokens[i-1].value].detokenize() - tokens[i+1].detokenize()
+					elif v == "*=":
+						value = self.vars[tokens[i-1].value].detokenize() * tokens[i+1].detokenize()
+					elif v == "/=":
+						value = self.vars[tokens[i-1].value].detokenize() / tokens[i+1].detokenize()
+					if type(value) == str:
+						value = '"' + value + '"'
+					else:
+						value = str(value)
+					namespace = self.vars
+					if inreturn:
+						namespace = self.localvars
+					value = self.tokenize(value)[0]
+					namespace[tokens[i-1].value] = value
+					tokens[i-1] = value
+					tokens.pop(i)
+					tokens.pop(i)
+					notdone = True
+					break
+				elif token.type == MAT:
+					if tokens[i+1].type == PAR and tokens[i+1].value == "(":
+						calc = self.evalpar(tokens, i+1, inreturn)
+						tokens = tokens[:i+1]
+						tokens.extend(calc)
+					v = token.value
+					calc = "\x89"
+					if v == "+":
+						calc = tokens[i-1].detokenize() + tokens[i+1].detokenize()
+					elif v == "-":
+						calc = tokens[i-1].detokenize() - tokens[i+1].detokenize()
+					elif v == "*":
+						calc = tokens[i-1].detokenize() * tokens[i+1].detokenize()
+					elif v == "/":
+						calc = tokens[i-1].detokenize() / tokens[i+1].detokenize()
+					if type(calc) == str:
+						calc = '"' + calc + '"'
+					else:
+						calc = str(calc)
+					tokens[i-1] = self.tokenize(calc)[0]
+					tokens.pop(i)
+					tokens.pop(i)
+					notdone = True
+					break
+				elif token.type == REF:
+					if i < len(tokens)-1:
+						if tokens[i+1].type == ASS:
+							continue
+					v = token.value
+					value = self.vars[v] if v in self.vars else self.localvars[v]
+					tokens[i] = value
+				elif token.type == LOG:
+					if tokens[i+1].type == REF:
+						usevars = True
+						v = tokens[i+1].value
+						if inreturn:
+							if v in self.localvars:
+								usevars = False
+						if usevars:
+							if v not in self.vars:
+								if v not in self.localvars:
+									self.ERROR(6)
+								usevars = False
+						if usevars:
+							tokens[i+1] = self.vars[v]
+						else:
+							tokens[i+1] = self.localvars[v]
+					v = token.value
+					if v == "!":
+						tokens[i] = self.tokenize(str(not tokens[i+1].detokenize()))[0]
+						notdone = True
+						break
+					value = None
+					v1 = tokens[i-1].detokenize()
+					v2 = tokens[i+1].detokenize()
+					if v == "^":
+						value = v1 ^ v2
+					elif v == "^":
+						value = v1 % v2
+					elif v == "&":
+						value = v1 and v2
+					elif v == "|":
+						value = v1 or v2
+					tokens[i-1] = self.tokenize(str(value))[0]
+					tokens.pop(i)
+					tokens.pop(i)
+					notdone = True
+					break
+				elif token.type == EQU:
+					if tokens[i+1].type == REF:
+						usevars = True
+						v = tokens[i+1].value
+						if inreturn:
+							if v in self.localvars:
+								usevars = False
+						if usevars:
+							if v not in self.vars:
+								if v not in self.localvars:
+									self.ERROR(6)
+								usevars = False
+						if usevars:
+							tokens[i+1] = self.vars[v]
+						else:
+							tokens[i+1] = self.localvars[v]
+					value = None
+					v = token.value
+					v1 = tokens[i-1].detokenize()
+					v2 = tokens[i+1].detokenize()
+					if v == "==":
+						value = v1 == v2
+					elif v == ">=":
+						value = v1 >= v2
+					elif v == "<=":
+						value = v1 <= v2
+					elif v == ">":
+						value = v1 > v2
+					elif v == "<":
+						value = v1 < v2
+					tokens[i-1] = self.tokenize(str(value))[0]
+					tokens.pop(i)
+					tokens.pop(i)
+					notdone = True
+					break
+		if len(tokens) == 0:
+			return
+		return tokens[0]
+	def runline (self, line, infunc=False):
 		line = line.lstrip("\t")
-		# gets the line as a stream of tokens
 		tokens = self.tokenize(line)
-		# print(tokens, "tokens")
-		# how many tokens to ignore
-		cont = 0
-		# print(self.localvars)
-		# replaces references
-		for i in range(len(tokens)):
-			token = tokens[i]
-			if token.type == REF:
-				if token.value not in self.vars:
-					if token.value in self.localvars:
-						tokens[i] = self.localvars[token.value]
-					continue
-				tokens[i] = self.vars[token.value]
-		# print(tokens, "tokens")
-		for i in range(len(tokens)):
-			# ignores tokens until cont is 0
-			if cont > 0:
-				cont -= 1
-				continue
-			# gets the token
-			token = tokens[i]
-			# print(token)
-			# invalid
-			if token.type == INV:
-				continue
-			# key
-			if token.type == KEY:
-				# aliased function
-				if token.value == "alias":
-					self.funcaliases[tokens[i+1].value] = tokens[i-1].value
-					self.funcnames.append(tokens[i+1].value)
-					cont = 1
-				# return value
-				elif token.value == "return":
-					# print(tokens[1:])
-					return self.processreturn(tokens[1:])
-			# mathmatical operation
-			elif token.type == MAT:
-				tokens[i-1] = self.tokenize(eval(tokens[i-1].value+token.value+tokens[i+1].value))
-				cont = 1
-			# assignment
-			elif token.type == ASS:
-				if tokens[i-1].type != "REF":
-					self.ERROR(5)
-				if tokens[i+1].type == FUN:
-					if i < len(tokens)-2:
-						ntok = tokens[i+2]
-						if ntok.type == PAR and ntok.value == "(":
-							tokens[i+1], igc = self.hrunfunc(tokens, i+1)
-							cont = igc
-				if token.value == "=":
-					self.vars[tokens[i-1].value] = tokens[i+1]
-			# function
-			elif token.type == FUN:
-				if i < len(tokens)-1:
-					ntok = tokens[i+1]
-					if ntok.type == PAR and ntok.value == "(":
-						tokens[i], igc = self.hrunfunc(tokens, i)
-						cont = igc
+		ret = self.evaltokens(tokens, infunc)
+		if ret != None:
+			return True, ret
 		return False, None
 	# helper function that calls functions given the token list and a start position
 	def hrunfunc (self, tokens, start):
@@ -575,19 +805,23 @@ class Runner ():
 		# evaluates function arguments
 		for i in range(len(positions)):
 			if i == len(positions)-1:
-				args.append(self.processreturn(tokens[positions[i]+1:])[1])
+				argtokens = tokens[positions[i]+1:]
+				args.append(self.evaltokens(argtokens))
 			else:
-				args.append(self.processreturn(tokens[positions[i]+1:positions[i+1]])[1])
+				argtokens = tokens[positions[i]+1:positions[i+1]]
+				args.append(self.evaltokens(argtokens))
 		# sets args to an empty list if no tokens where present in the content of the function call
 		if len(tokens) == 0:
 			args = []
-		# print(args)
+		# converts refs to actual values
+		for i in range(len(args)):
+			if args[i].type == REF:
+				args[i] = self.vars[args[i].value] if args[i].value in self.vars else self.localvars[args[i].value]
 		return self.runfunc(name, *args), end-start+1
 	# calls a function
 	def runfunc (self, fname, *args):
 		# resets localvars
 		self.localvars = {}
-		# print(fname, args)
 		# converts args from a tuple to a list
 		args = list(args)
 		# checks that fname is valid
@@ -616,7 +850,7 @@ class Runner ():
 				self.localvars[self.funcargs[fname][i]] = args[i]
 			# runs the function
 			for i in range(*self.funcs[fname]):
-				ret, val = self.runline(code[i])
+				ret, val = self.runline(code[i], True)
 				if ret:
 					return val
 	def run (self):
@@ -627,7 +861,6 @@ class Runner ():
 			self.executionline += 1
 			if i in self.funclines:
 				continue
-			# print("line", i+1)
 			self.runline(code[i])
 
 runner = Runner(details)
