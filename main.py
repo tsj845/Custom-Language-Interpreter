@@ -3,7 +3,9 @@ import traceback
 import re
 print("\x1bc", end="")
 
-code = load_contents("code.slow++", False)
+f = open("code.slow++")
+code = f.read()
+f.close()
 
 # token types
 EOF, INT, STR, MAT, ASS, REF, PAR, LOG, EQU, FUN, INV, CUR, SQU, SEP, KEY, LIT = "EOF", "INT", "STR", "MAT", "ASS", "REF", "PAR", "LOG", "EQU", "FUN", "INV", "CUR", "SQU", "SEP", "KEY", "LIT"
