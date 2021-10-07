@@ -1,44 +1,29 @@
-test
+mostly follows python syntax with a few differences
 
-conditionals {
-	if:if
-	elif:elif
-	else:else
-}
+code blocks are brackets {}
 
-blocks:"brackets"
-comments:"//"
-funcdef:"func"
-selfref:"self"
-newline:"\n"
+strings can only be defined using double quotes ""
 
-operators {
-	+:+
-	-:-
-	*:*
-	/:/
-	&:&
-	|:|
-	!:!
-	%:%
-	^:^
-}
+function definitions use the keyword "func"
 
-builtins {
-	str:string
-	int:int
-	float:float
-	bool:bool
-	list:array
-	dict:map
-}
+currently not all features are available
 
-str {
-	isdigit:isdigit
-	isalpha:isalpha
-	upper:toUpper
-	lower:toLower
-}
+NOTE: any features not in the feature list either won't work at all or will have unexpected behavior as they would be unimplemented
 
-output:"print"
-input:"input"
+current feature list:
+functions (with arguments),
+strings,
+booleans,
+integers,
+floats (in theory, but untested),
+all assignments,
+all equalities,
+parentheses,
+nested stuff,
+variables,
+local namespace (for functions)
+
+builtins that are available:
+print,
+input,
+hash
