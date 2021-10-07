@@ -2,9 +2,9 @@ mostly follows python syntax with a few differences
 
 code blocks are brackets {}
 
-strings can only be defined using double quotes ""
-
 function definitions use the keyword "func"
+
+for loops follow the syntax "for [loopvar]:[lower],[upper],[step]" note that any values in brackets are ones that must be provided by the programmer, brackets are not used in for loop parameters
 
 currently not all features are available
 
@@ -12,16 +12,18 @@ NOTE: any features not in the feature list either won't work at all or will have
 
 current feature list:
 functions (with arguments),
-strings,
+strings (can use double or single quotes),
 booleans,
 integers,
-floats (in theory, but untested),
+floats,
+negative numbers,
 all assignments,
 all equalities,
 parentheses,
 nested stuff,
 variables,
-local namespace (for functions)
+local namespace,
+for loops
 
 builtins that are available:
 print,

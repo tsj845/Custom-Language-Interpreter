@@ -1,19 +1,5 @@
-func hw (n) {
-	print(n)
-	print("Hello, World!")
-	return "repeated twice"
+print('program', -0.5)
+
+for i:0,4,1 {
+	print(i)
 }
-
-hw alias wh
-
-//hw("test")
-
-var = hw("testarg")
-var *= 2
-
-boolean = ("x" == "y")
-boolean = hash(2)
-boolean += 2
-
-//var = wh("argument")
-print(var, boolean == 2)

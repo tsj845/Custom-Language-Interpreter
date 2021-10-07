@@ -1,6 +1,8 @@
 import sys
 import traceback
 import re
+
+# clears the console
 print("\x1bc", end="")
 
 f = open("code.slow++")
@@ -8,7 +10,7 @@ code = f.read()
 f.close()
 
 # token types
-EOF, INT, STR, MAT, ASS, REF, PAR, LOG, EQU, FUN, INV, CUR, SQU, SEP, KEY, LIT = "EOF", "INT", "STR", "MAT", "ASS", "REF", "PAR", "LOG", "EQU", "FUN", "INV", "CUR", "SQU", "SEP", "KEY", "LIT"
+EOF, INT, STR, MAT, ASS, REF, PAR, LOG, EQU, FUN, INV, CUR, SQU, SEP, KEY, LIT, LST, DCT, SYM = "EOF", "INT", "STR", "MAT", "ASS", "REF", "PAR", "LOG", "EQU", "FUN", "INV", "CUR", "SQU", "SEP", "KEY", "LIT", "LST", "DCT", "SYM"
 
 """
 TOKENS:
@@ -28,6 +30,9 @@ TOKENS:
 	SEP -> marks a seperator
 	KEY -> a statement
 	LIT -> literal
+	LST -> a list
+	DCT -> a dict
+	SYM -> a symbol
 """
 
 class Token ():
@@ -43,6 +48,21 @@ class Token ():
 			return int(self.value)
 		elif self.type == LIT:
 			return eval(self.value)
+	def __getitem__ (self, key):
+		if self.type in (LST, DCT, STR):
+			return self.value[key]
+		else:
+			raise TypeError(f"Line: {runner.executionline} Invalid Subscripting Get Operation")
+	def __setitem__ (self, key, value):
+		if self.type in (LST, DCT):
+			self.value[key] = value
+		else:
+			raise TypeError(f"Line: {runner.executionline} Invalid Subscripting Set Operation")
+	def __len__ (self):
+		if self.type in (LST, DCT, STR):
+			return len(self.value)
+		else:
+			raise TypeError(f"Line: {runner.executionline} Invalid Len Operation")
 	def __str__ (self):
 		return f"Token({self.type}, {self.value})"
 	def __repr__ (self):
@@ -75,7 +95,9 @@ class Runner ():
 		# the names of all funcitons in program
 		self.funcnames = list(self.builtins.keys())
 		# statements
-		self.statements = ["if", "elif", "else", "alias", "return"]
+		self.statements = ["if", "elif", "else", "alias", "return", "for", "while", "in"]
+		# valid symbols
+		self.symbols = [":"]
 		# the line the interpreter is currently executing
 		self.executionline = 0
 	def listprops (self):
@@ -105,6 +127,15 @@ class Runner ():
 		# error code for undefined variable
 		elif errorcode == 6:
 			raise NameError(f"Line: {line} Undefined Variable Name")
+		# error code for unopened square bracket
+		elif errorcode == 7:
+			raise SyntaxError(f"Line: {line} Unopened Square Bracket")
+		# error code for unoped curly bracket
+		elif errorcode == 8:
+			raise SyntaxError(f"Line: {line} Unopened Curly Bracket")
+		# error code for invalid for loop parameters
+		elif errorcode == 9:
+			raise SyntaxError(f"Line: {line} Invalid For Loop Parameters")
 	# splits the code into lines
 	def breaklines (self, code):
 		"""
@@ -157,13 +188,13 @@ class Runner ():
 			# token type defaults to invalid
 			type = INV
 			# if the character is a digit
-			if chr.isdigit():
+			if chr.isdigit() or chr == "-":
 				# type is int
 				type = INT
 				# builds the token's value
 				while i < len(line):
 					# checks that the next character is another digit or a decimal
-					if not (line[i].isdigit() or line[i] == "."):
+					if not (line[i].isdigit() or line[i] in ".-"):
 						break
 					# adds the character to the value
 					part += line[i]
@@ -194,7 +225,8 @@ class Runner ():
 					i += 1
 					continue
 				# string
-				elif chr == '"':
+				elif chr == '"' or chr == "'":
+					endchr = chr
 					# stores the boolean if the string is closed
 					unclosed = True
 					# marks if the next character has been escaped
@@ -205,7 +237,7 @@ class Runner ():
 					i += 1
 					while i < len(line):
 						# checks if the character marks the end of the string
-						if line[i] == '"' and not escaped:
+						if line[i] == endchr and not escaped:
 							# marks the string a closed
 							unclosed = False
 							break
@@ -291,6 +323,12 @@ class Runner ():
 				elif chr == ",":
 					# type is seperator
 					type = SEP
+					# value is character
+					part = chr
+				# if the character is a valid symbol
+				elif chr in self.symbols:
+					# type is symbol
+					type = SYM
 					# value is character
 					part = chr
 			# creates and adds a token to the list of tokens
@@ -517,8 +555,40 @@ class Runner ():
 					continue
 		print(tokenslice)
 		return tokenslice
+	def checktokens (self, tokens, checkstart, indices, type, value):
+		for ind in indices:
+			token = tokens[checkstart+ind]
+			if token.type != type or token.value != value:
+				return True
+		return False
+	def loop (self, tokens, init):
+		if tokens[init+1].type != REF:
+			self.ERROR(9)
+		if tokens[init+2].type != SYM or tokens[init+2].value != ":":
+			self.ERROR(9)
+		if self.checktokens(tokens, init, (4, 6), SEP, ","):
+			self.ERROR(9)
+		loopvarname = tokens[init+1].value
+		loopstart = tokens[init+3].detokenize()
+		loopend = tokens[init+5].detokenize()
+		loopstep = tokens[init+7].detokenize()
+		self.executionline += 1
+		startline = self.executionline
+		endline = 0
+		for loop in range(loopstart, loopend, loopstep):
+			self.localvars[loopvarname] = self.tokenize(str(loop))[0]
+			self.looppass()
+			endline = self.executionline
+			self.executionline = startline
+		self.executionline = endline
+	def looppass (self):
+		while code[self.executionline].lstrip("\t") != "}":
+			self.runline(code[self.executionline])
+			self.executionline += 1
 	def evaltokens (self, tokens, inreturn=False):
 		notdone = True
+		# curly bracket depth
+		cbd = 0
 		while notdone:
 			notdone = False
 			for i in range(len(tokens)):
@@ -552,6 +622,9 @@ class Runner ():
 					elif token.value == "return":
 						obj = self.evaltokens(tokens[i+1:], inreturn)
 						return obj
+					elif token.value == "for":
+						self.loop(tokens, i)
+						return
 				elif token.type == ASS:
 					v = token.value
 					if tokens[i-1].type != REF:
@@ -712,10 +785,21 @@ class Runner ():
 					tokens.pop(i)
 					notdone = True
 					break
+				elif token.type == SQU:
+					tokens[i] = self.assemblelist(tokens, i)
+				elif token.type == CUR:
+					v = token.value
+					if v == "{":
+						cbd += 1
+					elif v == "}":
+						cbd -= 1
+					if cbd == -1:
+						self.ERROR(8)
 		if len(tokens) == 0:
 			return
 		return tokens[0]
 	def runline (self, line, infunc=False):
+		# print(line)
 		line = line.lstrip("\t")
 		tokens = self.tokenize(line)
 		ret = self.evaltokens(tokens, infunc)
@@ -798,18 +882,22 @@ class Runner ():
 				self.executionline = i
 				ret, val = self.runline(code[i], True)
 				if ret:
+					self.executionline = stored+1
 					return val
-			self.executionline = stored
+			self.executionline = stored+1
 	def run (self):
 		global code
 		code = self.breaklines(code)
 		self.hoistfuncs()
-		for i in range(len(code)):
-			if i in self.funclines:
+		self.executionline = -1
+		while self.executionline < len(code):
+			self.executionline += 1
+			if self.executionline in self.funclines:
 				continue
-			self.executionline = i
+			if self.executionline >= len(code):
+				break
 			try:
-				self.runline(code[i])
+				self.runline(code[self.executionline])
 			except:
 				print(self.vars, self.localvars)
 				raise

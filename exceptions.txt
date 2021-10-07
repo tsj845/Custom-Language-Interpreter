@@ -1,0 +1,13 @@
+Outlines the meaning of differect errors
+
+"Invalid Subscripting [Get/Set] Operation" - the attempted subscripting failed because the object didn't support it
+
+"Invalid Len Operation" - the attempt at retreiving the object's length failed because the object had no length
+
+"Function Already Defined" - that function name was already defined
+
+"Invalid Assignment" - the program attempted to assign a value to something other than a variable
+
+"Undefined Variable Name" - the variable name was not defined
+
+"Invalid For Loop Parameters" - one or more for loop parameters was invalid check that your for loop matched the outline in syntax.txt
