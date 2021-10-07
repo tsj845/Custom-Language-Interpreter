@@ -3,16 +3,7 @@ import traceback
 import re
 print("\x1bc", end="")
 
-def load_contents (filepath, splitnew=True):
-	f = open(filepath, "r")
-	lines = f.read()
-	f.close()
-	if splitnew:
-		lines = lines.split("\n")
-	return lines
-
-details = load_contents("syntax.txt")
-code = load_contents("code."+details[0], False)
+code = load_contents("code.slow++", False)
 
 # token types
 EOF, INT, STR, MAT, ASS, REF, PAR, LOG, EQU, FUN, INV, CUR, SQU, SEP, KEY, LIT = "EOF", "INT", "STR", "MAT", "ASS", "REF", "PAR", "LOG", "EQU", "FUN", "INV", "CUR", "SQU", "SEP", "KEY", "LIT"
@@ -54,49 +45,6 @@ class Token ():
 		return f"Token({self.type}, {self.value})"
 	def __repr__ (self):
 		return self.__str__()
-
-class Searcher ():
-	def __init__ (self):
-		self.namespace = ""
-	def findvalue (self, value):
-		value = value.split("->")
-		if self.namespace != "":
-			value.insert(0, self.namespace)
-		val = None
-		search = details.copy()
-		for i in range(len(value)):
-			for ind in range(len(search)):
-				line = search[ind]
-				if len(line) > 0:
-					if line[0] == "\t":
-						line = line[1:]
-				reg = re.compile(value[i]+"(\s|:)")
-				re2 = re.compile(value[i]+"\s")
-				match = reg.match(line)
-				if match:
-					if re2.match(line):
-						search = search[ind:]
-						search = search[:search.index("}")]
-						break
-					else:
-						val = line[match.end():]
-						if val[-1] == '"' or val[-1] == "'":
-							val = val[1:-1]
-						return val
-		return val
-
-searcher = Searcher()
-
-# check for a return statement
-regret = re.compile("^return\s")
-# check for an if statement
-regif = re.compile("^if\s")
-# check for assignment
-regass = re.compile("={1}")
-# check for string
-regstr = re.compile('"')
-# check for alias
-regali = re.compile("\salias\s")
 
 class Runner ():
 	def __init__ (self):
