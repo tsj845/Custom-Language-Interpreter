@@ -99,47 +99,7 @@ regstr = re.compile('"')
 regali = re.compile("\salias\s")
 
 class Runner ():
-	def __init__ (self, details):
-		# gets the newline
-		self.newline = searcher.findvalue("newline")
-		if self.newline != "\\n":
-			self.newline += "\n"
-		else:
-			self.newline = "\n"
-		searcher.namespace = "conditionals"
-		# conditionals
-		self.conditions = {
-			searcher.findvalue("if"):"if", 
-			searcher.findvalue("elif"):"elif", 
-			searcher.findvalue("else"):"else"
-		}
-		searcher.namespace = "operators"
-		# mathmatical operators
-		self.operators = {
-			searcher.findvalue("\\+"):"+",
-			searcher.findvalue("-"):"-",
-			searcher.findvalue("\\*"):"*",
-			searcher.findvalue("/"):"/"
-		}
-		# logical operators
-		self.logic = {
-			searcher.findvalue("&"):"and",
-			searcher.findvalue("\\|"):"or",
-			searcher.findvalue("!"):"not",
-			searcher.findvalue("%"):"%",
-			searcher.findvalue("\\^"):"^"
-		}
-		searcher.namespace = ""
-		# the symbols used to mark code blocks
-		self.blocks = searcher.findvalue("blocks")
-		# alias for print
-		self.printline = searcher.findvalue("output")
-		# alias for input
-		self.inputline = searcher.findvalue("input")
-		# gets the character(s) used to mark comments
-		self.comment = searcher.findvalue("comments")
-		# the keyword used to define functions
-		self.funcdef = searcher.findvalue("funcdef")
+	def __init__ (self):
 		# functions, maps from a name to the start and end lines of the function
 		self.funcs = {}
 		# function args
@@ -165,8 +125,7 @@ class Runner ():
 		# the names of all funcitons in program
 		self.funcnames = list(self.builtins.keys())
 		# statements
-		self.statements = list(self.conditions.keys())
-		self.statements.extend(("alias", "return"))
+		self.statements = ["if", "elif", "else", "alias", "return"]
 		# the line the interpreter is currently executing
 		self.executionline = 0
 	def listprops (self):
@@ -201,7 +160,7 @@ class Runner ():
 		"""
 		this function splits to code by newlines then joins the segments that were actually strings, this allows the programmer to use newlines within strings
 		"""
-		code = code.split(self.newline)
+		code = code.split("\n")
 		isstr = False
 		inlen = len(code)-1
 		for i in range(len(code)):
@@ -211,11 +170,11 @@ class Runner ():
 			line = code[i]
 			if line.count('"') % 2 != 0:
 				if isstr:
-					line = self.newline + code.pop(i+1)
+					line = "\n" + code.pop(i+1)
 					code[i] = line
 				isstr = not isstr
 			elif isstr:
-				line += self.newline + code.pop(i+1)
+				line += "\n" + code.pop(i+1)
 				code[i] = line
 		return code
 	# converts a line of code into a stream of tokens
@@ -238,8 +197,8 @@ class Runner ():
 				continue
 			# tests for a comment
 			test = line[i:]
-			if self.comment in test:
-				if test.index(self.comment) == 0:
+			if "//" in test:
+				if test.index("//") == 0:
 					break
 			# resets the part
 			part = ""
@@ -406,8 +365,8 @@ class Runner ():
 			# gets the current line
 			line = code[i]
 			# checks if the line is a function definition
-			if self.funcdef+" " in line:
-				if line.index(self.funcdef+" ") == 0:
+			if "func " in line:
+				if line.index("func ") == 0:
 					isfunc = True
 					# sets start
 					start = i+1
@@ -905,5 +864,5 @@ class Runner ():
 				print(self.vars, self.localvars)
 				raise
 
-runner = Runner(details)
+runner = Runner()
 runner.run()
