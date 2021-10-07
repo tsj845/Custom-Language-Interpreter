@@ -156,17 +156,14 @@ class Runner ():
 		self.funclines = []
 		# variables specific to the local namespace
 		self.localvars = {}
-		# the names of all funcitons in program
-		self.funcnames = [
-			"print",
-			"input"
-		]
 		# builtin functions
 		self.builtins = {
 			"print":print,
 			"input":input,
 			"hash":hash,
 		}
+		# the names of all funcitons in program
+		self.funcnames = list(self.builtins.keys())
 		# statements
 		self.statements = list(self.conditions.keys())
 		self.statements.extend(("alias", "return"))
@@ -177,27 +174,28 @@ class Runner ():
 		for key in list(d.keys()):
 			print(key, d[key])
 	def ERROR (self, errorcode):
+		line = self.executionline
 		# error code for unclosed string
 		if errorcode == 0:
-			raise SyntaxError("Unclosed String")
+			raise SyntaxError(f"Line: {line} Unclosed String")
 		# error code for unmatched parentheses
 		elif errorcode == 1:
-			raise SyntaxError("Unmatched Parentheses")
+			raise SyntaxError(f"Line: {line} Unmatched Parentheses")
 		# error code for unmatched square brackets
 		elif errorcode == 2:
-			raise SyntaxError("Unmatched Square Brackets")
+			raise SyntaxError(f"Line: {line} Unmatched Square Brackets")
 		# error code for unmatched curly brackers
 		elif errorcode == 3:
-			raise SyntaxError("Unmatched Curly Brackets")
+			raise SyntaxError(f"Line: {line} Unmatched Curly Brackets")
 		# error code for redundant function definition
 		elif errorcode == 4:
-			raise NameError("Function Already Defined")
+			raise NameError(f"Line: {line} Function Already Defined")
 		# error code for attempting to set something other than a reference
 		elif errorcode == 5:
-			raise SyntaxError("Invalid Assignment")
+			raise SyntaxError(f"Line: {line} Invalid Assignment")
 		# error code for undefined variable
 		elif errorcode == 6:
-			raise NameError("Undefined Variable Name")
+			raise NameError(f"Line: {line} Undefined Variable Name")
 	# splits the code into lines
 	def breaklines (self, code):
 		"""
@@ -571,8 +569,44 @@ class Runner ():
 					tokenslice.pop(i)
 					notdone = True
 					break
+				elif token.type == EQU:
+					if tokenslice[i+1].type == REF:
+						usevars = True
+						v = tokenslice[i+1].value
+						if inreturn:
+							if v in self.localvars:
+								usevars = False
+						if usevars:
+							if v not in self.vars:
+								if v not in self.localvars:
+									self.ERROR(6)
+								usevars = False
+						if usevars:
+							tokenslice[i+1] = self.vars[v]
+						else:
+							tokenslice[i+1] = self.localvars[v]
+					value = None
+					v = token.value
+					v1 = tokenslice[i-1].detokenize()
+					v2 = tokenslice[i+1].detokenize()
+					if v == "==":
+						value = v1 == v2
+					elif v == ">=":
+						value = v1 >= v2
+					elif v == "<=":
+						value = v1 <= v2
+					elif v == ">":
+						value = v1 > v2
+					elif v == "<":
+						value = v1 < v2
+					tokenslice[i-1] = self.tokenize(str(value))[0]
+					tokenslice.pop(i)
+					tokenslice.pop(i)
+					notdone = True
+					break
 				else:
 					continue
+		print(tokenslice)
 		return tokenslice
 	def evaltokens (self, tokens, inreturn=False):
 		notdone = True
@@ -614,6 +648,7 @@ class Runner ():
 					if tokens[i-1].type != REF:
 						self.ERROR(5)
 					if tokens[i+1].type == REF:
+						print(tokens[i+1])
 						usevars = True
 						v = tokens[i+1].value
 						if inreturn:
@@ -820,6 +855,7 @@ class Runner ():
 		return self.runfunc(name, *args), end-start+1
 	# calls a function
 	def runfunc (self, fname, *args):
+		stored = self.executionline
 		# resets localvars
 		self.localvars = {}
 		# converts args from a tuple to a list
@@ -850,18 +886,24 @@ class Runner ():
 				self.localvars[self.funcargs[fname][i]] = args[i]
 			# runs the function
 			for i in range(*self.funcs[fname]):
+				self.executionline = i
 				ret, val = self.runline(code[i], True)
 				if ret:
 					return val
+			self.executionline = stored
 	def run (self):
 		global code
 		code = self.breaklines(code)
 		self.hoistfuncs()
 		for i in range(len(code)):
-			self.executionline += 1
 			if i in self.funclines:
 				continue
-			self.runline(code[i])
+			self.executionline = i
+			try:
+				self.runline(code[i])
+			except:
+				print(self.vars, self.localvars)
+				raise
 
 runner = Runner(details)
 runner.run()
