@@ -1,5 +1,12 @@
 print('program', -0.5)
 
-for i:0,4,1 {
+for i(0,10,1) {
 	print(i)
+}
+
+b = True
+
+while (b) {
+	b = False
+	print("h")
 }

@@ -2,6 +2,8 @@ import sys
 import traceback
 import re
 
+sys.setrecursionlimit(50)
+
 # clears the console
 print("\x1bc", end="")
 
@@ -48,6 +50,11 @@ class Token ():
 			return int(self.value)
 		elif self.type == LIT:
 			return eval(self.value)
+		elif self.type == REF:
+			if self.value in runner.localvars:
+				return runner.localvars[self.value].detokenize()
+			if self.value in runner.vars:
+				return runner.vars[self.value].detokenize()
 	def __getitem__ (self, key):
 		if self.type in (LST, DCT, STR):
 			return self.value[key]
@@ -551,9 +558,14 @@ class Runner ():
 					tokenslice.pop(i)
 					notdone = True
 					break
-				else:
-					continue
-		print(tokenslice)
+				elif token.type == REF:
+					if i < len(tokens)-1:
+						if tokens[i+1].type == ASS:
+							continue
+					# print(token, self.vars[token.value])
+					v = token.value
+					value = self.vars[v] if v in self.vars else self.localvars[v]
+					tokens[i] = value
 		return tokenslice
 	def checktokens (self, tokens, checkstart, indices, type, value):
 		for ind in indices:
@@ -564,7 +576,7 @@ class Runner ():
 	def loop (self, tokens, init):
 		if tokens[init+1].type != REF:
 			self.ERROR(9)
-		if tokens[init+2].type != SYM or tokens[init+2].value != ":":
+		if tokens[init+2].type != PAR or tokens[init+2].value != "(":
 			self.ERROR(9)
 		if self.checktokens(tokens, init, (4, 6), SEP, ","):
 			self.ERROR(9)
@@ -581,8 +593,26 @@ class Runner ():
 			endline = self.executionline
 			self.executionline = startline
 		self.executionline = endline
+	def whileloop (self, tokens, init):
+		line = self.executionline
+		# print(bool(self.evaltokens(self.tokenize(code[line])[init:-1]).detokenize()) == False, "boolean")
+		self.executionline += 1
+		while bool(self.evaltokens(self.tokenize(code[line])[init:-1]).detokenize()):
+			if self.looppass():
+				break
+		testline = line
+		while code[testline].lstrip("\t") != "}":
+			testline += 1
+		self.executionline = testline
 	def looppass (self):
 		while code[self.executionline].lstrip("\t") != "}":
+			# print(code[self.executionline].lstrip("\t"), self.executionline)
+			if code[self.executionline].lstrip("\t") == "break":
+				# print("BREAK")
+				return True
+			elif code[self.executionline].lstrip("\t") == "continue":
+				self.executionline += 1
+				continue
 			self.runline(code[self.executionline])
 			self.executionline += 1
 	def evaltokens (self, tokens, inreturn=False):
@@ -625,12 +655,14 @@ class Runner ():
 					elif token.value == "for":
 						self.loop(tokens, i)
 						return
+					elif token.value == "while":
+						self.whileloop(tokens, i+1)
+						return
 				elif token.type == ASS:
-					v = token.value
 					if tokens[i-1].type != REF:
 						self.ERROR(5)
 					if tokens[i+1].type == REF:
-						print(tokens[i+1])
+						# print(tokens[i+1])
 						usevars = True
 						v = tokens[i+1].value
 						if inreturn:
@@ -658,6 +690,7 @@ class Runner ():
 						calc = self.evalpar(tokens, i+1, inreturn)
 						tokens = tokens[:i+1]
 						tokens.extend(calc)
+					v = token.value
 					if v == "=":
 						value = tokens[i+1].detokenize()
 					elif v == "+=":

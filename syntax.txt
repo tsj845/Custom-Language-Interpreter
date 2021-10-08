@@ -4,7 +4,7 @@ code blocks are brackets {}
 
 function definitions use the keyword "func"
 
-for loops follow the syntax "for [loopvar]:[lower],[upper],[step]" note that any values in brackets are ones that must be provided by the programmer, brackets are not used in for loop parameters
+for loops follow the syntax "for [loopvar]([lower],[upper],[step])" note that any values in brackets are ones that must be provided by the programmer, brackets are not used in for loop parameters
 
 currently not all features are available
 
@@ -23,7 +23,8 @@ parentheses,
 nested stuff,
 variables,
 local namespace,
-for loops
+for loops,
+while loops
 
 builtins that are available:
 print,
