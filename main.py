@@ -2,10 +2,10 @@ import sys
 import traceback
 import re
 
-sys.setrecursionlimit(50)
+sys.setrecursionlimit(15)
 
 # clears the console
-print("\x1bc", end="")
+print("\x1bc", end="\n")
 
 f = open("code.slow++")
 code = f.read()
@@ -13,6 +13,11 @@ f.close()
 
 # token types
 EOF, INT, STR, MAT, ASS, REF, PAR, LOG, EQU, FUN, INV, CUR, SQU, SEP, KEY, LIT, LST, DCT, SYM = "EOF", "INT", "STR", "MAT", "ASS", "REF", "PAR", "LOG", "EQU", "FUN", "INV", "CUR", "SQU", "SEP", "KEY", "LIT", "LST", "DCT", "SYM"
+
+SUBSCRIPT = ("STR", "LST", "DCT")
+
+class E (Exception):
+	pass
 
 """
 TOKENS:
@@ -57,6 +62,8 @@ class Token ():
 				return runner.vars[self.value].detokenize()
 	def __getitem__ (self, key):
 		if self.type in (LST, DCT, STR):
+			if self.type == STR:
+				key += 1
 			return self.value[key]
 		else:
 			raise TypeError(f"Line: {runner.executionline} Invalid Subscripting Get Operation")
@@ -562,10 +569,25 @@ class Runner ():
 					if i < len(tokens)-1:
 						if tokens[i+1].type == ASS:
 							continue
-					# print(token, self.vars[token.value])
 					v = token.value
 					value = self.vars[v] if v in self.vars else self.localvars[v]
 					tokens[i] = value
+				elif token.type == SQU:
+					if token.value == "[":
+						if i > 0 and tokenslice[i-1].type in SUBSCRIPT:
+							val, ending = self.retreive(tokenslice, i)
+							nt = tokenslice[:i-1]
+							nt.append(val)
+							nt.extend(tokenslice[ending+1:])
+							tokenslice = nt
+						else:
+							val, ending = self.assemblelist(tokenslice, i)
+							nt = tokenslice[:i]
+							nt.append(val)
+							nt.extend(tokenslice[ending+1:])
+							tokenslice = nt
+					notdone = True
+					break
 		return tokenslice
 	def checktokens (self, tokens, checkstart, indices, type, value):
 		for ind in indices:
@@ -586,39 +608,47 @@ class Runner ():
 		loopstep = tokens[init+7].detokenize()
 		self.executionline += 1
 		startline = self.executionline
-		endline = 0
 		for loop in range(loopstart, loopend, loopstep):
 			self.localvars[loopvarname] = self.tokenize(str(loop))[0]
-			self.looppass()
-			endline = self.executionline
+			v = self.looppass()
+			if v:
+				if v == 1:
+					break
+				elif v == 2:
+					continue
 			self.executionline = startline
-		self.executionline = endline
+		testline = loopstart
+		while code[testline].lstrip("\t") != "}":
+			testline += 1
+		self.executionline = testline
 	def whileloop (self, tokens, init):
 		line = self.executionline
-		# print(bool(self.evaltokens(self.tokenize(code[line])[init:-1]).detokenize()) == False, "boolean")
 		self.executionline += 1
 		while bool(self.evaltokens(self.tokenize(code[line])[init:-1]).detokenize()):
-			if self.looppass():
-				break
+			v = self.looppass()
+			if v:
+				if v == 1:
+					break
+				elif v == 2:
+					continue
 		testline = line
 		while code[testline].lstrip("\t") != "}":
 			testline += 1
 		self.executionline = testline
 	def looppass (self):
 		while code[self.executionline].lstrip("\t") != "}":
-			# print(code[self.executionline].lstrip("\t"), self.executionline)
 			if code[self.executionline].lstrip("\t") == "break":
-				# print("BREAK")
-				return True
+				return 1
 			elif code[self.executionline].lstrip("\t") == "continue":
-				self.executionline += 1
-				continue
+				return 2
 			self.runline(code[self.executionline])
 			self.executionline += 1
 	def evaltokens (self, tokens, inreturn=False):
+		# global DBC
+		# if DBC == 0:
+		# 	raise Exception()
+		# DBC -= 1
 		notdone = True
-		# curly bracket depth
-		cbd = 0
 		while notdone:
 			notdone = False
 			for i in range(len(tokens)):
@@ -662,7 +692,6 @@ class Runner ():
 					if tokens[i-1].type != REF:
 						self.ERROR(5)
 					if tokens[i+1].type == REF:
-						# print(tokens[i+1])
 						usevars = True
 						v = tokens[i+1].value
 						if inreturn:
@@ -819,20 +848,77 @@ class Runner ():
 					notdone = True
 					break
 				elif token.type == SQU:
-					tokens[i] = self.assemblelist(tokens, i)
+					if token.value == "[":
+						if i > 0 and tokens[i-1].type in SUBSCRIPT:
+							val, ending = self.retreive(tokens, i)
+							nt = tokens[:i-1]
+							nt.append(val)
+							nt.extend(tokens[ending+1:])
+							tokens = nt
+						else:
+							val, ending = self.assemblelist(tokens, i)
+							nt = tokens[:i]
+							nt.append(val)
+							nt.extend(tokens[ending+1:])
+							tokens = nt
+					notdone = True
+					break
 				elif token.type == CUR:
 					v = token.value
-					if v == "{":
-						cbd += 1
-					elif v == "}":
-						cbd -= 1
-					if cbd == -1:
-						self.ERROR(8)
 		if len(tokens) == 0:
 			return
 		return tokens[0]
+	def assemblelist (self, tokens, init):
+		# global DBCOUNT
+		# if DBCOUNT == 0:
+		# 	raise KeyboardInterrupt()
+		# DBCOUNT -= 1
+		sbd = 0
+		endpos = init+1
+		for i in range(init, len(tokens)):
+			if tokens[i].value == "]":
+				sbd -= 1
+				if sbd == 0:
+					endpos = i
+					break
+			elif tokens[i].value == "[":
+				sbd += 1
+		tokens = tokens[init+1:endpos]
+		positions = [-1]
+		for i in range(len(tokens)):
+			t = tokens[i]
+			if t.type == SEP and t.value == ",":
+				positions.append(i)
+		final = []
+		for i in range(len(positions)):
+			if i == len(positions)-1:
+				argtokens = tokens[positions[i]+1:]
+			else:
+				argtokens = tokens[positions[i]+1:positions[i+1]]
+			final.append(self.evaltokens(argtokens).detokenize())
+		if len(tokens) == 0:
+			final = []
+		return Token(LST, final), endpos
+	def retreive (self, tokens, init):
+		sbd = 0
+		endpos = init+1
+		for i in range(init, len(tokens)):
+			if tokens[i].value == "]":
+				sbd -= 1
+				if sbd == 0:
+					endpos = i
+					break
+			elif tokens[i].value == "[":
+				sbd += 1
+		ind = self.evaltokens(tokens[init+1:endpos]).detokenize()
+		val = tokens[init-1][ind]
+		if type(val) == str:
+			val = '"' + val + '"'
+		else:
+			val = str(val)
+		val = self.tokenize(val)[0]
+		return val, endpos
 	def runline (self, line, infunc=False):
-		# print(line)
 		line = line.lstrip("\t")
 		tokens = self.tokenize(line)
 		ret = self.evaltokens(tokens, infunc)
@@ -858,19 +944,25 @@ class Runner ():
 		tokens = tokens[2:end]
 		args = []
 		positions = [-1]
+		sbd = 0
 		# gets the positions of item seperators
 		for i in range(len(tokens)):
 			t = tokens[i]
 			if t.type == SEP and t.value == ",":
-				positions.append(i)
+				if sbd == 0:
+					positions.append(i)
+			elif t.type == SQU:
+				if t.value in "[":
+					sbd += 1
+				elif t.value in "]":
+					sbd -= 1
 		# evaluates function arguments
 		for i in range(len(positions)):
 			if i == len(positions)-1:
 				argtokens = tokens[positions[i]+1:]
-				args.append(self.evaltokens(argtokens))
 			else:
 				argtokens = tokens[positions[i]+1:positions[i+1]]
-				args.append(self.evaltokens(argtokens))
+			args.append(self.evaltokens(argtokens))
 		# sets args to an empty list if no tokens where present in the content of the function call
 		if len(tokens) == 0:
 			args = []
@@ -934,6 +1026,9 @@ class Runner ():
 			except:
 				print(self.vars, self.localvars)
 				raise
+
+# DBCOUNT = 1
+# DBC = 10
 
 runner = Runner()
 runner.run()
