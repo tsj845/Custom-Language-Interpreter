@@ -1,9 +1,3 @@
-import sys
-import traceback
-import re
-
-sys.setrecursionlimit(20)
-
 # clears the console
 print("\x1bc", end="\n")
 
