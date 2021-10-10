@@ -181,10 +181,6 @@ class Runner ():
 		return code
 	# converts a line of code into a stream of tokens
 	def tokenize (self, line):
-		global DBC2
-		if DBC2 == 0:
-			raise Exception()
-		DBC2 -= 1
 		"""
 		tokenizes a line of code
 		"""
@@ -663,12 +659,6 @@ class Runner ():
 				return 2
 			self.runline(code[self.executionline])
 			self.executionline += 1
-	def doLST (self, tokens, i, inreturn=False):
-		tokens = tokens.copy()
-		token = tokens[i]
-	def doDCT (self, tokens, i, inreturn=False):
-		tokens = tokens.copy()
-		token = tokens[i]
 	def doREF (self, tokens, i, inreturn=False):
 		tokens = tokens.copy()
 		token = tokens[i]
@@ -708,6 +698,12 @@ class Runner ():
 		nt.append(val)
 		nt.extend(tokens[ending+1:])
 		return nt
+	def doCUR (self, tokens, i, inreturn=False):
+		val, ending = self.assembledict(tokens, i)
+		nt = tokens[:i]
+		nt.append(val)
+		nt.extend(tokens[ending+1:])
+		return nt
 	def doASS (self, tokens, i, inreturn=False):
 		namespace = self.vars
 		if inreturn:
@@ -723,6 +719,12 @@ class Runner ():
 		if tokens[i+1].type in (SQU, CUR) and tokens[i+1].value in "[{":
 			if tokens[i+1].type == SQU:
 				tokens = self.doSQU(tokens, i+1)
+				namespace[tokens[i-1].detokenize()] = tokens[i+1]
+				tokens.pop(i-1)
+				tokens.pop(i-1)
+				return tokens
+			elif tokens[i+1].type == CUR:
+				tokens = self.doCUR(tokens, i+1)
 				namespace[tokens[i-1].detokenize()] = tokens[i+1]
 				tokens.pop(i-1)
 				tokens.pop(i-1)
@@ -773,11 +775,6 @@ class Runner ():
 			self.whileloop(tokens, i+1)
 			return 1, None
 	def evaltokens (self, tokens, inreturn=False):
-		# print(tokens)
-		# global DBC
-		# if DBC == 0:
-		# 	raise Exception()
-		# DBC -= 1
 		notdone = True
 		while notdone:
 			notdone = False
@@ -790,10 +787,6 @@ class Runner ():
 				if token.type == PAR and token.value == "(":
 					tokens[i] = self.evalpar(tokens, i, inreturn)[0]
 				elif token.type == FUN:
-					# global DBC3
-					# if DBC3 == 0:
-					# 	raise Exception()
-					# DBC3 -= 1
 					tk = self.doFUN(tokens, i)
 					if tk != None:
 						tokens = tk
@@ -927,11 +920,7 @@ class Runner ():
 						break
 				elif token.type == CUR:
 					if token.value == "{":
-						val, ending = self.assembledict(tokens, i)
-						nt = tokens[:i]
-						nt.append(val)
-						nt.extend(tokens[ending+1:])
-						tokens = nt
+						tokens = self.doCUR(tokens, i)
 					notdone = True
 					break
 		if len(tokens) == 0:
@@ -980,11 +969,6 @@ class Runner ():
 			final = {}
 		return Token(DCT, final), endpos
 	def assemblelist (self, tokens, init):
-		global DBCOUNT
-		DBCOUNT += 1
-		# if DBCOUNT == 0:
-		# 	raise KeyboardInterrupt()
-		# DBCOUNT -= 1
 		sbd = 0
 		endpos = init+1
 		for i in range(init, len(tokens)):
@@ -1132,29 +1116,19 @@ class Runner ():
 	def run (self):
 		global code
 		code = self.breaklines(code)
-		# print(code)
 		self.hoistfuncs()
-		# print(self.funclines)
 		self.executionline = -1
 		while self.executionline < len(code):
 			self.executionline += 1
-			print(self.executionline)
 			if self.executionline in self.funclines:
 				continue
 			if self.executionline >= len(code):
 				break
-			print(code[self.executionline], "CEL")
 			try:
 				self.runline(code[self.executionline])
 			except:
 				print(self.vars, self.localvars)
 				raise
-
-# DBCOUNT = 1
-DBCOUNT = 0
-# DBC = 10
-DBC2 = 10
-# DBC3 = 1
 
 runner = Runner()
 runner.run()
