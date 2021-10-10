@@ -2,7 +2,7 @@ import sys
 import traceback
 import re
 
-sys.setrecursionlimit(15)
+sys.setrecursionlimit(20)
 
 # clears the console
 print("\x1bc", end="\n")
@@ -60,6 +60,11 @@ class Token ():
 				return runner.localvars[self.value].detokenize()
 			if self.value in runner.vars:
 				return runner.vars[self.value].detokenize()
+		elif self.type == LST:
+			return self.value
+		elif self.type == DCT:
+			return self.value
+		return self.value
 	def __getitem__ (self, key):
 		if self.type in (LST, DCT, STR):
 			if self.type == STR:
@@ -77,6 +82,8 @@ class Token ():
 			return len(self.value)
 		else:
 			raise TypeError(f"Line: {runner.executionline} Invalid Len Operation")
+	def __bool__ (self):
+		return bool(self.detokenize())
 	def __str__ (self):
 		return f"Token({self.type}, {self.value})"
 	def __repr__ (self):
@@ -174,6 +181,10 @@ class Runner ():
 		return code
 	# converts a line of code into a stream of tokens
 	def tokenize (self, line):
+		global DBC2
+		if DBC2 == 0:
+			raise Exception()
+		DBC2 -= 1
 		"""
 		tokenizes a line of code
 		"""
@@ -588,6 +599,15 @@ class Runner ():
 							tokenslice = nt
 					notdone = True
 					break
+				elif token.type == CUR:
+					if token.value == "{":
+						val, ending = self.assembledict(tokenslice, i)
+						nt = tokenslice[:i]
+						nt.append(val)
+						nt.extend(tokenslice[ending+1:])
+						tokenslice = nt
+					notdone = True
+					break
 		return tokenslice
 	def checktokens (self, tokens, checkstart, indices, type, value):
 		for ind in indices:
@@ -643,7 +663,117 @@ class Runner ():
 				return 2
 			self.runline(code[self.executionline])
 			self.executionline += 1
+	def doLST (self, tokens, i, inreturn=False):
+		tokens = tokens.copy()
+		token = tokens[i]
+	def doDCT (self, tokens, i, inreturn=False):
+		tokens = tokens.copy()
+		token = tokens[i]
+	def doREF (self, tokens, i, inreturn=False):
+		tokens = tokens.copy()
+		token = tokens[i]
+		if i < len(tokens)-1:
+			if tokens[i+1].type == ASS:
+				return
+		v = token.value
+		usevars = True
+		if inreturn:
+			if v in self.localvars:
+				usevars = False
+		if usevars:
+			if v not in self.vars:
+				if v not in self.localvars:
+					self.ERROR(6)
+				usevars = False
+		if usevars:
+			return self.vars[v]
+		else:
+			return self.localvars[v]
+	def doFUN (self, tokens, i, inreturn=False):
+		tokens = tokens.copy()
+		if i < len(tokens)-1:
+			if tokens[i+1].type == PAR and tokens[i+1].value == "(":
+				val, end = self.hrunfunc(tokens, i)
+				newtokens = tokens[:i]
+				if val != None:
+					newtokens.append(val)
+				newtokens.extend(tokens[end:])
+				tokens = newtokens
+				return tokens
+		return tokens
+	def doSQU (self, tokens, i, inreturn=False):
+		tokens = tokens.copy()
+		val, ending = self.assemblelist(tokens, i)
+		nt = tokens[:i]
+		nt.append(val)
+		nt.extend(tokens[ending+1:])
+		return nt
+	def doASS (self, tokens, i, inreturn=False):
+		namespace = self.vars
+		if inreturn:
+			namespace = self.localvars
+		tokens = tokens.copy()
+		token = tokens[i]
+		if tokens[i-1].type != REF:
+			self.ERROR(5)
+		if tokens[i+1].type == REF:
+			tokens[i+1] = self.doREF(tokens, i+1, inreturn)
+		if tokens[i+1].type == FUN:
+			tokens = self.doFUN(tokens, i+1)
+		if tokens[i+1].type in (SQU, CUR) and tokens[i+1].value in "[{":
+			if tokens[i+1].type == SQU:
+				tokens = self.doSQU(tokens, i+1)
+				namespace[tokens[i-1].detokenize()] = tokens[i+1]
+				tokens.pop(i-1)
+				tokens.pop(i-1)
+				return tokens
+		value = "\x89"
+		if tokens[i+1].type == PAR and tokens[i+1].value == "(":
+			calc = self.evalpar(tokens, i+1, inreturn)
+			tokens = tokens[:i+1]
+			tokens.extend(calc)
+		v = token.value
+		if v == "=":
+			value = tokens[i+1].detokenize()
+		elif v == "+=":
+			value = self.vars[tokens[i-1].value].detokenize() + tokens[i+1].detokenize()
+		elif v == "-=":
+			value = self.vars[tokens[i-1].value].detokenize() - tokens[i+1].detokenize()
+		elif v == "*=":
+			value = self.vars[tokens[i-1].value].detokenize() * tokens[i+1].detokenize()
+		elif v == "/=":
+			value = self.vars[tokens[i-1].value].detokenize() / tokens[i+1].detokenize()
+		if type(value) == str:
+			value = '"' + value + '"'
+		else:
+			value = str(value)
+		value = self.tokenize(value)[0]
+		namespace[tokens[i-1].value] = value
+		tokens[i-1] = value
+		tokens.pop(i)
+		tokens.pop(i)
+		return tokens
+	def doKEY (self, tokens, i, inreturn=False):
+		tokens = tokens.copy()
+		token = tokens[i]
+		if token.value == "alias":
+			self.funcaliases[tokens[i+1].value] = tokens[i-1].value
+			self.funcnames.append(tokens[i+1].value)
+			tokens.pop(i-1)
+			tokens.pop(i-1)
+			tokens.pop(i-1)
+			return 0, tokens
+		elif token.value == "return":
+			obj = self.evaltokens(tokens[i+1:], inreturn)
+			return 2, obj
+		elif token.value == "for":
+			self.loop(tokens, i)
+			return 1, None
+		elif token.value == "while":
+			self.whileloop(tokens, i+1)
+			return 1, None
 	def evaltokens (self, tokens, inreturn=False):
+		# print(tokens)
 		# global DBC
 		# if DBC == 0:
 		# 	raise Exception()
@@ -660,88 +790,27 @@ class Runner ():
 				if token.type == PAR and token.value == "(":
 					tokens[i] = self.evalpar(tokens, i, inreturn)[0]
 				elif token.type == FUN:
-					if i < len(tokens)-1:
-						if tokens[i+1].type == PAR and tokens[i+1].value == "(":
-							val, end = self.hrunfunc(tokens, i)
-							newtokens = tokens[:i]
-							if val != None:
-								newtokens.append(val)
-							newtokens.extend(tokens[end:])
-							tokens = newtokens
-							notdone = True
-							break
-				elif token.type == KEY:
-					if token.value == "alias":
-						self.funcaliases[tokens[i+1].value] = tokens[i-1].value
-						self.funcnames.append(tokens[i+1].value)
-						tokens.pop(i-1)
-						tokens.pop(i-1)
-						tokens.pop(i-1)
+					# global DBC3
+					# if DBC3 == 0:
+					# 	raise Exception()
+					# DBC3 -= 1
+					tk = self.doFUN(tokens, i)
+					if tk != None:
+						tokens = tk
 						notdone = True
 						break
-					elif token.value == "return":
-						obj = self.evaltokens(tokens[i+1:], inreturn)
-						return obj
-					elif token.value == "for":
-						self.loop(tokens, i)
+				elif token.type == KEY:
+					vc, v = self.doKEY(tokens, i)
+					if vc == 0:
+						tokens = v
+						notdone = True
+						break
+					elif vc == 1:
 						return
-					elif token.value == "while":
-						self.whileloop(tokens, i+1)
-						return
+					elif vc == 2:
+						return v
 				elif token.type == ASS:
-					if tokens[i-1].type != REF:
-						self.ERROR(5)
-					if tokens[i+1].type == REF:
-						usevars = True
-						v = tokens[i+1].value
-						if inreturn:
-							if v in self.localvars:
-								usevars = False
-						if usevars:
-							if v not in self.vars:
-								if v not in self.localvars:
-									self.ERROR(6)
-								usevars = False
-						if usevars:
-							tokens[i+1] = self.vars[v]
-						else:
-							tokens[i+1] = self.localvars[v]
-					if tokens[i+1].type == FUN:
-						if tokens[i+2].type == PAR and tokens[i+2].value == "(":
-							val, end = self.hrunfunc(tokens, i+1)
-							newtokens = tokens[:i+1]
-							if val != None:
-								newtokens.append(val)
-							newtokens.extend(tokens[end+i+3:])
-							tokens = newtokens
-					value = "\x89"
-					if tokens[i+1].type == PAR and tokens[i+1].value == "(":
-						calc = self.evalpar(tokens, i+1, inreturn)
-						tokens = tokens[:i+1]
-						tokens.extend(calc)
-					v = token.value
-					if v == "=":
-						value = tokens[i+1].detokenize()
-					elif v == "+=":
-						value = self.vars[tokens[i-1].value].detokenize() + tokens[i+1].detokenize()
-					elif v == "-=":
-						value = self.vars[tokens[i-1].value].detokenize() - tokens[i+1].detokenize()
-					elif v == "*=":
-						value = self.vars[tokens[i-1].value].detokenize() * tokens[i+1].detokenize()
-					elif v == "/=":
-						value = self.vars[tokens[i-1].value].detokenize() / tokens[i+1].detokenize()
-					if type(value) == str:
-						value = '"' + value + '"'
-					else:
-						value = str(value)
-					namespace = self.vars
-					if inreturn:
-						namespace = self.localvars
-					value = self.tokenize(value)[0]
-					namespace[tokens[i-1].value] = value
-					tokens[i-1] = value
-					tokens.pop(i)
-					tokens.pop(i)
+					tokens = self.doASS(tokens, i, inreturn)
 					notdone = True
 					break
 				elif token.type == MAT:
@@ -769,12 +838,9 @@ class Runner ():
 					notdone = True
 					break
 				elif token.type == REF:
-					if i < len(tokens)-1:
-						if tokens[i+1].type == ASS:
-							continue
-					v = token.value
-					value = self.vars[v] if v in self.vars else self.localvars[v]
-					tokens[i] = value
+					v = self.doREF(tokens, i)
+					if v:
+						tokens[i] = v
 				elif token.type == LOG:
 					if tokens[i+1].type == REF:
 						usevars = True
@@ -856,20 +922,66 @@ class Runner ():
 							nt.extend(tokens[ending+1:])
 							tokens = nt
 						else:
-							val, ending = self.assemblelist(tokens, i)
-							nt = tokens[:i]
-							nt.append(val)
-							nt.extend(tokens[ending+1:])
-							tokens = nt
+							tokens = self.doSQU(tokens, i)
+						notdone = True
+						break
+				elif token.type == CUR:
+					if token.value == "{":
+						val, ending = self.assembledict(tokens, i)
+						nt = tokens[:i]
+						nt.append(val)
+						nt.extend(tokens[ending+1:])
+						tokens = nt
 					notdone = True
 					break
-				elif token.type == CUR:
-					v = token.value
 		if len(tokens) == 0:
 			return
 		return tokens[0]
+	def assembledict (self, tokens, init):
+		cbd = 0
+		endpos = init+1
+		for i in range(init, len(tokens)):
+			if tokens[i].value == "}":
+				cbd -= 1
+				if cbd == 0:
+					endpos = i
+					break
+			elif tokens[i].value == "{":
+				cbd += 1
+		tokens = tokens[init+1:endpos]
+		positions = [-1]
+		bd = 0
+		for i in range(len(tokens)):
+			t = tokens[i]
+			if t.type == SEP and t.value == ",":
+				if bd == 0:
+					positions.append(i)
+			elif t.type == SQU or t.type == CUR:
+				if t.value in "[{":
+					bd += 1
+				elif t.value in "]}":
+					bd -= 1
+		final = {}
+		for i in range(len(positions)):
+			if i == len(positions)-1:
+				argtokens = tokens[positions[i]+1:]
+			else:
+				argtokens = tokens[positions[i]+1:positions[i+1]]
+			splitind = -1
+			for ind in range(len(argtokens)):
+				t = argtokens[ind]
+				if t.type == SYM and t.value == ":":
+					splitind = ind
+					break
+			if splitind == -1:
+				raise Exception()
+			final[self.evaltokens(argtokens[:splitind]).detokenize()] = self.evaltokens(argtokens[splitind+1:]).detokenize()
+		if len(tokens) == 0:
+			final = {}
+		return Token(DCT, final), endpos
 	def assemblelist (self, tokens, init):
-		# global DBCOUNT
+		global DBCOUNT
+		DBCOUNT += 1
 		# if DBCOUNT == 0:
 		# 	raise KeyboardInterrupt()
 		# DBCOUNT -= 1
@@ -885,10 +997,17 @@ class Runner ():
 				sbd += 1
 		tokens = tokens[init+1:endpos]
 		positions = [-1]
+		bd = 0
 		for i in range(len(tokens)):
 			t = tokens[i]
 			if t.type == SEP and t.value == ",":
-				positions.append(i)
+				if bd == 0:
+					positions.append(i)
+			elif t.type == SQU or t.type == CUR:
+				if t.value in "[{":
+					bd += 1
+				elif t.value in "]}":
+					bd -= 1
 		final = []
 		for i in range(len(positions)):
 			if i == len(positions)-1:
@@ -944,18 +1063,18 @@ class Runner ():
 		tokens = tokens[2:end]
 		args = []
 		positions = [-1]
-		sbd = 0
+		bd = 0
 		# gets the positions of item seperators
 		for i in range(len(tokens)):
 			t = tokens[i]
 			if t.type == SEP and t.value == ",":
-				if sbd == 0:
+				if bd == 0:
 					positions.append(i)
-			elif t.type == SQU:
-				if t.value in "[":
-					sbd += 1
-				elif t.value in "]":
-					sbd -= 1
+			elif t.type == SQU or t.type == CUR:
+				if t.value in "[{":
+					bd += 1
+				elif t.value in "]}":
+					bd -= 1
 		# evaluates function arguments
 		for i in range(len(positions)):
 			if i == len(positions)-1:
@@ -970,7 +1089,7 @@ class Runner ():
 		for i in range(len(args)):
 			if args[i].type == REF:
 				args[i] = self.vars[args[i].value] if args[i].value in self.vars else self.localvars[args[i].value]
-		return self.runfunc(name, *args), end-start+1
+		return self.runfunc(name, *args), end+start+1
 	# calls a function
 	def runfunc (self, fname, *args):
 		stored = self.executionline
@@ -1007,20 +1126,24 @@ class Runner ():
 				self.executionline = i
 				ret, val = self.runline(code[i], True)
 				if ret:
-					self.executionline = stored+1
+					self.executionline = stored
 					return val
-			self.executionline = stored+1
+			self.executionline = stored
 	def run (self):
 		global code
 		code = self.breaklines(code)
+		# print(code)
 		self.hoistfuncs()
+		# print(self.funclines)
 		self.executionline = -1
 		while self.executionline < len(code):
 			self.executionline += 1
+			print(self.executionline)
 			if self.executionline in self.funclines:
 				continue
 			if self.executionline >= len(code):
 				break
+			print(code[self.executionline], "CEL")
 			try:
 				self.runline(code[self.executionline])
 			except:
@@ -1028,7 +1151,10 @@ class Runner ():
 				raise
 
 # DBCOUNT = 1
+DBCOUNT = 0
 # DBC = 10
+DBC2 = 10
+# DBC3 = 1
 
 runner = Runner()
 runner.run()
