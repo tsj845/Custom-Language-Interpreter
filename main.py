@@ -687,10 +687,17 @@ class Runner ():
 		return tokens
 	def doSQU (self, tokens, i, inreturn=False):
 		tokens = tokens.copy()
-		val, ending = self.assemblelist(tokens, i)
-		nt = tokens[:i]
-		nt.append(val)
-		nt.extend(tokens[ending+1:])
+		if i > 0 and tokens[i-1].type in SUBSCRIPT:
+			val, ending = self.retreive(tokens, i)
+			nt = tokens[:i-1]
+			nt.append(val)
+			nt.extend(tokens[ending+1:])
+			tokens = nt
+		else:
+			val, ending = self.assemblelist(tokens, i)
+			nt = tokens[:i]
+			nt.append(val)
+			nt.extend(tokens[ending+1:])
 		return nt
 	def doCUR (self, tokens, i, inreturn=False):
 		val, ending = self.assembledict(tokens, i)
@@ -768,6 +775,148 @@ class Runner ():
 		elif token.value == "while":
 			self.whileloop(tokens, i+1)
 			return 1, None
+		elif token.value in ("else", "elif"):
+			depth = 1
+			testline = self.executionline+1
+			while testline < len(code):
+				depth -= code[testline].count("}")
+				depth += code[testline].count("{")
+				if depth == 0:
+					self.executionline = testline
+					return 1, None
+				testline += 1
+			return 1, None
+		elif token.value == "if":
+			val = bool(self.evalpar(tokens, i+1)[0])
+			if val:
+				return 1, None
+			else:
+				depth = 1
+				testline = self.executionline+1
+				while testline < len(code):
+					depth -= code[testline].count("}")
+					if depth == 0:
+						if "elif" in code[testline]:
+							testtokens = self.tokenize(code[testline].lstrip("\t"))
+							for lp in range(len(testtokens)):
+								token = testtokens[lp]
+								if token.type == KEY and token.value == "elif":
+									val = bool(self.evalpar(testtokens, lp+1)[0])
+									if val:
+										self.executionline = testline
+										return 1, None
+						elif "else" in code[testline]:
+							testtokens = self.tokenize(code[testline].lstrip("\t"))
+							for token in testtokens:
+								if token.type == KEY and token.value == "else":
+									self.executionline = testline
+									return 1, None
+					depth += code[testline].count("{")
+					if depth == 0:
+						self.executionline = testline
+						return 1, None
+					testline += 1
+				self.executionline = testline+1
+				return 1, None
+		return 1, None
+	def doMAT (self, tokens, i, inreturn=False):
+		tokens = tokens.copy()
+		token = tokens[i]
+		if tokens[i+1].type == PAR and tokens[i+1].value == "(":
+			calc = self.evalpar(tokens, i+1, inreturn)
+			tokens = tokens[:i+1]
+			tokens.extend(calc)
+		v = token.value
+		calc = "\x89"
+		if v == "+":
+			calc = tokens[i-1].detokenize() + tokens[i+1].detokenize()
+		elif v == "-":
+			calc = tokens[i-1].detokenize() - tokens[i+1].detokenize()
+		elif v == "*":
+			calc = tokens[i-1].detokenize() * tokens[i+1].detokenize()
+		elif v == "/":
+			calc = tokens[i-1].detokenize() / tokens[i+1].detokenize()
+		if type(calc) == str:
+			calc = '"' + calc + '"'
+		else:
+			calc = str(calc)
+		tokens[i-1] = self.tokenize(calc)[0]
+		tokens.pop(i)
+		tokens.pop(i)
+		return tokens
+	def doLOG (self, tokens, i, inreturn=False):
+		tokens = tokens.copy()
+		token = tokens[i]
+		if tokens[i+1].type == REF:
+			usevars = True
+			v = tokens[i+1].value
+			if inreturn:
+				if v in self.localvars:
+					usevars = False
+			if usevars:
+				if v not in self.vars:
+					if v not in self.localvars:
+						self.ERROR(6)
+					usevars = False
+			if usevars:
+				tokens[i+1] = self.vars[v]
+			else:
+				tokens[i+1] = self.localvars[v]
+		v = token.value
+		if v == "!":
+			tokens[i] = self.tokenize(str(not tokens[i+1].detokenize()))[0]
+			return tokens
+		value = None
+		v1 = tokens[i-1].detokenize()
+		v2 = tokens[i+1].detokenize()
+		if v == "^":
+			value = v1 ^ v2
+		elif v == "^":
+			value = v1 % v2
+		elif v == "&":
+			value = v1 and v2
+		elif v == "|":
+			value = v1 or v2
+		tokens[i-1] = self.tokenize(str(value))[0]
+		tokens.pop(i)
+		tokens.pop(i)
+		return tokens
+	def doEQU (self, tokens, i, inreturn=False):
+		tokens = tokens.copy()
+		token = tokens[i]
+		if tokens[i+1].type == REF:
+			usevars = True
+			v = tokens[i+1].value
+			if inreturn:
+				if v in self.localvars:
+					usevars = False
+			if usevars:
+				if v not in self.vars:
+					if v not in self.localvars:
+						self.ERROR(6)
+					usevars = False
+			if usevars:
+				tokens[i+1] = self.vars[v]
+			else:
+				tokens[i+1] = self.localvars[v]
+		value = None
+		v = token.value
+		v1 = tokens[i-1].detokenize()
+		v2 = tokens[i+1].detokenize()
+		if v == "==":
+			value = v1 == v2
+		elif v == ">=":
+			value = v1 >= v2
+		elif v == "<=":
+			value = v1 <= v2
+		elif v == ">":
+			value = v1 > v2
+		elif v == "<":
+			value = v1 < v2
+		tokens[i-1] = self.tokenize(str(value))[0]
+		tokens.pop(i)
+		tokens.pop(i)
+		return tokens
 	def evaltokens (self, tokens, inreturn=False):
 		notdone = True
 		while notdone:
@@ -801,27 +950,7 @@ class Runner ():
 					notdone = True
 					break
 				elif token.type == MAT:
-					if tokens[i+1].type == PAR and tokens[i+1].value == "(":
-						calc = self.evalpar(tokens, i+1, inreturn)
-						tokens = tokens[:i+1]
-						tokens.extend(calc)
-					v = token.value
-					calc = "\x89"
-					if v == "+":
-						calc = tokens[i-1].detokenize() + tokens[i+1].detokenize()
-					elif v == "-":
-						calc = tokens[i-1].detokenize() - tokens[i+1].detokenize()
-					elif v == "*":
-						calc = tokens[i-1].detokenize() * tokens[i+1].detokenize()
-					elif v == "/":
-						calc = tokens[i-1].detokenize() / tokens[i+1].detokenize()
-					if type(calc) == str:
-						calc = '"' + calc + '"'
-					else:
-						calc = str(calc)
-					tokens[i-1] = self.tokenize(calc)[0]
-					tokens.pop(i)
-					tokens.pop(i)
+					tokens = self.doMAT(tokens, i, inreturn)
 					notdone = True
 					break
 				elif token.type == REF:
@@ -829,94 +958,23 @@ class Runner ():
 					if v:
 						tokens[i] = v
 				elif token.type == LOG:
-					if tokens[i+1].type == REF:
-						usevars = True
-						v = tokens[i+1].value
-						if inreturn:
-							if v in self.localvars:
-								usevars = False
-						if usevars:
-							if v not in self.vars:
-								if v not in self.localvars:
-									self.ERROR(6)
-								usevars = False
-						if usevars:
-							tokens[i+1] = self.vars[v]
-						else:
-							tokens[i+1] = self.localvars[v]
-					v = token.value
-					if v == "!":
-						tokens[i] = self.tokenize(str(not tokens[i+1].detokenize()))[0]
-						notdone = True
-						break
-					value = None
-					v1 = tokens[i-1].detokenize()
-					v2 = tokens[i+1].detokenize()
-					if v == "^":
-						value = v1 ^ v2
-					elif v == "^":
-						value = v1 % v2
-					elif v == "&":
-						value = v1 and v2
-					elif v == "|":
-						value = v1 or v2
-					tokens[i-1] = self.tokenize(str(value))[0]
-					tokens.pop(i)
-					tokens.pop(i)
+					tokens = self.doLOG(tokens, i)
 					notdone = True
 					break
 				elif token.type == EQU:
-					if tokens[i+1].type == REF:
-						usevars = True
-						v = tokens[i+1].value
-						if inreturn:
-							if v in self.localvars:
-								usevars = False
-						if usevars:
-							if v not in self.vars:
-								if v not in self.localvars:
-									self.ERROR(6)
-								usevars = False
-						if usevars:
-							tokens[i+1] = self.vars[v]
-						else:
-							tokens[i+1] = self.localvars[v]
-					value = None
-					v = token.value
-					v1 = tokens[i-1].detokenize()
-					v2 = tokens[i+1].detokenize()
-					if v == "==":
-						value = v1 == v2
-					elif v == ">=":
-						value = v1 >= v2
-					elif v == "<=":
-						value = v1 <= v2
-					elif v == ">":
-						value = v1 > v2
-					elif v == "<":
-						value = v1 < v2
-					tokens[i-1] = self.tokenize(str(value))[0]
-					tokens.pop(i)
-					tokens.pop(i)
+					tokens = self.doEQU(tokens, i, inreturn)
 					notdone = True
 					break
 				elif token.type == SQU:
 					if token.value == "[":
-						if i > 0 and tokens[i-1].type in SUBSCRIPT:
-							val, ending = self.retreive(tokens, i)
-							nt = tokens[:i-1]
-							nt.append(val)
-							nt.extend(tokens[ending+1:])
-							tokens = nt
-						else:
-							tokens = self.doSQU(tokens, i)
+						tokens = self.doSQU(tokens, i)
 						notdone = True
 						break
 				elif token.type == CUR:
 					if token.value == "{":
 						tokens = self.doCUR(tokens, i)
-					notdone = True
-					break
+						notdone = True
+						break
 		if len(tokens) == 0:
 			return
 		return tokens[0]

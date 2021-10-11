@@ -1,5 +1,17 @@
 //var = ({0:0}[0])
 //var = [0,[0]]
-var = {0:{0:[0]}}
-print(var)
+//var = {0:{0:[0]}}
+//print(var)
 //print([0])
+//print((0 == "str"))
+
+var = False
+var2 = False
+
+if (var) {
+	print("good")
+} elif (var2) {
+	print("BLKCNLCD")
+} else {
+	print("bad")
+}
