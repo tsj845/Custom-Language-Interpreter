@@ -1,3 +1,6 @@
+# imports temporary functions
+from temp import *
+
 # clears the console
 print("\x1bc", end="\n")
 
@@ -6,16 +9,12 @@ code = f.read()
 f.close()
 
 # token types
-EOF, INT, STR, MAT, ASS, REF, PAR, LOG, EQU, FUN, INV, CUR, SQU, SEP, KEY, LIT, LST, DCT, SYM = "EOF", "INT", "STR", "MAT", "ASS", "REF", "PAR", "LOG", "EQU", "FUN", "INV", "CUR", "SQU", "SEP", "KEY", "LIT", "LST", "DCT", "SYM"
+INT, STR, MAT, ASS, REF, PAR, LOG, EQU, FUN, INV, CUR, SQU, SEP, KEY, LIT, LST, DCT, SYM = "INT", "STR", "MAT", "ASS", "REF", "PAR", "LOG", "EQU", "FUN", "INV", "CUR", "SQU", "SEP", "KEY", "LIT", "LST", "DCT", "SYM"
 
 SUBSCRIPT = ("STR", "LST", "DCT")
 
-class E (Exception):
-	pass
-
 """
 TOKENS:
-	EOF -> end of file
 	INT -> integer
 	STR -> string
 	MAT -> mathmatical operator
@@ -110,47 +109,211 @@ class Runner ():
 		# the names of all funcitons in program
 		self.funcnames = list(self.builtins.keys())
 		# statements
-		self.statements = ["if", "elif", "else", "alias", "return", "for", "while", "in"]
+		self.statements = ("if", "elif", "else", "alias", "return", "for", "while", "in")
 		# valid symbols
-		self.symbols = [":"]
+		self.symbols = (":", ".")
 		# the line the interpreter is currently executing
 		self.executionline = 0
+		# config for showing flags
+		self.sfconfig = [(0, "*")]
+		# flags
+		self.flags = {
+			# debugging flags
+			"showfams" : False,
+			"showflags" : False,
+			"showvars" : False,
+			"showlocals" : False,
+			"pel" : False,
+			"funcnames" : False,
+			"funclines" : False,
+			"funcargs" : False,
+			# temporary wrappers for list operations
+			"tmp-list-join" : True,
+			"tmp-list-append" : True,
+			"tmp-list-pop" : True,
+			"tmp-list-insert" : True,
+			"tmp-list-count" : True,
+			"tmp-list-extend" : True,
+			"tmp-list-index" : True,
+			"tmp-list-copy" : True,
+			"tmp-list-reverse" : True,
+			# temporary wrappers for dict operations
+			"tmp-dict-update" : True,
+			"tmp-dict-pop" : True,
+			"tmp-dict-copy" : True,
+			"tmp-dict-keys" : True,
+			"tmp-dict-items" : True,
+			"tmp-dict-values" : True,
+		}
+		# flag families
+		self.ffams = {
+			"ALL" : tuple(self.flags.keys()),
+			"FUNCS" : ("funcnames", "funclines", "funcargs"),
+			"VARS" : ("showvars", "showlocals"),
+			"DEBUG" : ("!FUNCS", "!VARS", "pel", "showflags", "showfams"),
+			"TMP" : ("!TMP-LIST", "!TMP-DICT"),
+			"TMP-LIST" : ("tmp-list-join", "tmp-list-append", "tmp-list-pop", "tmp-list-insert", "tmp-list-count", "tmp-list-extend", "tmp-list-index", "tmp-list-copy", "tmp-list-reverse"),
+			"TMP-DICT" : ("tmp-dict-update", "tmp-dict-pop", "tmp-dict-copy", "tmp-dict-keys", "tmp-dict-items", "tmp-dict-values"),
+		}
+		# temp names
+		self.tmpnames = {
+			# temp list funcs
+			"tmp-list-join" : "ljoin",
+			"tmp-list-append" : "lappend",
+			"tmp-list-pop" : "lpop",
+			"tmp-list-insert" : "linsert",
+			"tmp-list-copy" : "lcopy",
+			"tmp-list-count" : "lcount",
+			"tmp-list-reverse" : "lreverse",
+			"tmp-list-extend" : "lextend",
+			"tmp-list-index" : "lindex",
+			# temp dict funcs
+			"tmp-dict-update" : "dupdate",
+			"tmp-dict-pop" : "dpop",
+			"tmp-dict-copy" : "dcopy",
+			"tmp-dict-keys" : "dkeys",
+			"tmp-dict-items" : "ditems",
+			"tmp-dict-values" : "dvalues",
+		}
+		# temp funcs
+		self.tmpfuncs = {
+			# temp list funcs
+			"tmp-list-join" : tmplistjoin,
+			"tmp-list-append" : tmplistappend,
+			"tmp-list-pop" : tmplistpop,
+			"tmp-list-insert" : tmplistinsert,
+			"tmp-list-copy" : tmplistcopy,
+			"tmp-list-count" : tmplistcount,
+			"tmp-list-reverse" : tmplistreverse,
+			"tmp-list-extend" : tmplistextend,
+			"tmp-list-index" : tmplistindex,
+			# temp dict funcs
+			"tmp-dict-update" : tmpdictupdate,
+			"tmp-dict-pop" : tmpdictpop,
+			"tmp-dict-copy" : tmpdictcopy,
+			"tmp-dict-keys" : tmpdictkeys,
+			"tmp-dict-items" : tmpdictitems,
+			"tmp-dict-values" : tmpdictvalues,
+		}
+	def _displayfam (self, fam):
+		allon = 1
+		for m in self.ffams[fam]:
+			if m[0] == "!":
+				allon *= self._displayfam(m[1:])
+			else:
+				allon *= self.flags[m]
+		return allon
+	def _displayfams (self):
+		for fam in self.ffams:
+			output = {0:False, 1:True}[self._displayfam(fam)]
+			print(f"{fam} : {output}")
+	def _displayflags (self):
+		for name in self.flags:
+			passed = True
+			for rule in self.sfconfig:
+				t = rule[0]
+				c = rule[1]
+				if t == 1:
+					if c not in name:
+						passed = False
+						break
+				elif t == 2:
+					if c in name:
+						passed = False
+						break
+				elif t == 3:
+					if name[c[0]:c[1]] != c[2]:
+						passed = False
+						break
+				elif t == 4:
+					if name[c[0]:c[1]] == c[2]:
+						passed = False
+						break
+			if passed:
+				print(f"{name} : {self.flags[name]}")
+	def _flagshow (self, line):
+		line = line.lstrip().rstrip()
+		if line[line.index(" ")+1:].isalpha():
+			self.flags["showflags"] = eval(line[line.index(" ")+1])
+			return
+		self.sfconfig = eval(line[line.index(" ")+1:])
+	def _process_tmp_flags (self):
+		for name in self.flags:
+			if name[:3] != "tmp":
+				continue
+			if self.flags[name]:
+				fname = self.tmpnames[name]
+				self.builtins[fname] = self.tmpfuncs[name]
+				self.funcnames.append(fname)
+	def _setfamily (self, line):
+		prop = line[2:line.index(" ")]
+		val = eval(line[line.index(" ")+1:])
+		if prop in self.ffams:
+			for pname in self.ffams[prop]:
+				if pname[0] == "!":
+					self._setfamily("#"+pname+" "+str(val))
+				else:
+					self.flags[pname] = val
+	def _setprop (self, line):
+		if line[1] == "!":
+			self._setfamily(line)
+			return
+		prop = line[1:line.index(" ")]
+		if prop == "showflags":
+			self._flagshow(line)
+			return
+		val = eval(line[line.index(" ")+1:])
+		if prop in self.flags:
+			self.flags[prop] = val
+	def setflags (self):
+		global code
+		for i in range(len(code)):
+			line = code[i]
+			if len(line) == 0 or line[0] != "#":
+				if len(line) > 1 and line[0:2] == "//":
+					self.funclines.append(i)
+					continue
+				break
+			self._setprop(line)
+			self.funclines.append(i)
+		self._process_tmp_flags()
 	def listprops (self):
 		d = self.__dict__
 		for key in list(d.keys()):
 			print(key, d[key])
 	def ERROR (self, errorcode):
 		line = self.executionline
+		errinfo = f"Line: {line}: {code[line]}"
 		# error code for unclosed string
 		if errorcode == 0:
-			raise SyntaxError(f"Line: {line} Unclosed String")
+			raise SyntaxError(f"{errinfo} Unclosed String")
 		# error code for unmatched parentheses
 		elif errorcode == 1:
-			raise SyntaxError(f"Line: {line} Unmatched Parentheses")
+			raise SyntaxError(f"{errinfo} Unmatched Parentheses")
 		# error code for unmatched square brackets
 		elif errorcode == 2:
-			raise SyntaxError(f"Line: {line} Unmatched Square Brackets")
+			raise SyntaxError(f"{errinfo} Unmatched Square Brackets")
 		# error code for unmatched curly brackers
 		elif errorcode == 3:
-			raise SyntaxError(f"Line: {line} Unmatched Curly Brackets")
+			raise SyntaxError(f"{errinfo} Unmatched Curly Brackets")
 		# error code for redundant function definition
 		elif errorcode == 4:
-			raise NameError(f"Line: {line} Function Already Defined")
+			raise NameError(f"{errinfo} Function Already Defined")
 		# error code for attempting to set something other than a reference
 		elif errorcode == 5:
-			raise SyntaxError(f"Line: {line} Invalid Assignment")
+			raise SyntaxError(f"{errinfo} Invalid Assignment")
 		# error code for undefined variable
 		elif errorcode == 6:
-			raise NameError(f"Line: {line} Undefined Variable Name")
+			raise NameError(f"{errinfo} Undefined Variable Name")
 		# error code for unopened square bracket
 		elif errorcode == 7:
-			raise SyntaxError(f"Line: {line} Unopened Square Bracket")
+			raise SyntaxError(f"{errinfo} Unopened Square Bracket")
 		# error code for unoped curly bracket
 		elif errorcode == 8:
-			raise SyntaxError(f"Line: {line} Unopened Curly Bracket")
+			raise SyntaxError(f"{errinfo} Unopened Curly Bracket")
 		# error code for invalid for loop parameters
 		elif errorcode == 9:
-			raise SyntaxError(f"Line: {line} Invalid For Loop Parameters")
+			raise SyntaxError(f"{errinfo} Invalid For Loop Parameters")
 	# splits the code into lines
 	def breaklines (self, code):
 		"""
@@ -222,7 +385,8 @@ class Runner ():
 				type = REF
 				while i < len(line):
 					# checks that the character is alphanumeric or a dot
-					if not (line[i].isalnum() or line[i] == "."):
+					# if not (line[i].isalnum() or line[i] == "."):
+					if not line[i].isalnum():
 						break
 					part += line[i]
 					i += 1
@@ -567,12 +731,12 @@ class Runner ():
 					notdone = True
 					break
 				elif token.type == REF:
-					if i < len(tokens)-1:
-						if tokens[i+1].type == ASS:
+					if i < len(tokenslice)-1:
+						if tokenslice[i+1].type == ASS:
 							continue
 					v = token.value
 					value = self.vars[v] if v in self.vars else self.localvars[v]
-					tokens[i] = value
+					tokenslice[i] = value
 				elif token.type == SQU:
 					if token.value == "[":
 						if i > 0 and tokenslice[i-1].type in SUBSCRIPT:
@@ -587,8 +751,8 @@ class Runner ():
 							nt.append(val)
 							nt.extend(tokenslice[ending+1:])
 							tokenslice = nt
-					notdone = True
-					break
+						notdone = True
+						break
 				elif token.type == CUR:
 					if token.value == "{":
 						val, ending = self.assembledict(tokenslice, i)
@@ -596,8 +760,8 @@ class Runner ():
 						nt.append(val)
 						nt.extend(tokenslice[ending+1:])
 						tokenslice = nt
-					notdone = True
-					break
+						notdone = True
+						break
 		return tokenslice
 	def checktokens (self, tokens, checkstart, indices, type, value):
 		for ind in indices:
@@ -627,7 +791,7 @@ class Runner ():
 				elif v == 2:
 					continue
 			self.executionline = startline
-		testline = loopstart
+		testline = startline
 		while code[testline].lstrip("\t") != "}":
 			testline += 1
 		self.executionline = testline
@@ -686,6 +850,7 @@ class Runner ():
 				return tokens
 		return tokens
 	def doSQU (self, tokens, i, inreturn=False):
+		global DB1
 		tokens = tokens.copy()
 		if i > 0 and tokens[i-1].type in SUBSCRIPT:
 			val, ending = self.retreive(tokens, i)
@@ -694,6 +859,9 @@ class Runner ():
 			nt.extend(tokens[ending+1:])
 			tokens = nt
 		else:
+			if DB1 == 0:
+				raise Exception()
+			DB1 -= 1
 			val, ending = self.assemblelist(tokens, i)
 			nt = tokens[:i]
 			nt.append(val)
@@ -735,23 +903,34 @@ class Runner ():
 			calc = self.evalpar(tokens, i+1, inreturn)
 			tokens = tokens[:i+1]
 			tokens.extend(calc)
+		tv = tokens[i-1].value
+		# tv1 = self.evaltokens(tokens[:i])
+		tv2 = self.evaltokens(tokens[i+1:])
+		chosen = self.vars if tv in self.vars else self.localvars
 		v = token.value
 		if v == "=":
-			value = tokens[i+1].detokenize()
+			value = tv2.detokenize()
 		elif v == "+=":
-			value = self.vars[tokens[i-1].value].detokenize() + tokens[i+1].detokenize()
+			value = chosen[tv].detokenize() + tv2.detokenize()
 		elif v == "-=":
-			value = self.vars[tokens[i-1].value].detokenize() - tokens[i+1].detokenize()
+			value = chosen[tv].detokenize() - tv2.detokenize()
 		elif v == "*=":
-			value = self.vars[tokens[i-1].value].detokenize() * tokens[i+1].detokenize()
+			value = chosen[tv].detokenize() * tv2.detokenize()
 		elif v == "/=":
-			value = self.vars[tokens[i-1].value].detokenize() / tokens[i+1].detokenize()
+			value = chosen[tv].detokenize() / tv2.detokenize()
 		if type(value) == str:
 			value = '"' + value + '"'
 		else:
 			value = str(value)
-		value = self.tokenize(value)[0]
-		namespace[tokens[i-1].value] = value
+		value = self.tokenize(value)
+		if value[0].type in (SQU, CUR):
+			if value[0].type == SQU:
+				value = self.doSQU(value, 0)[0]
+			else:
+				value = self.doCUR(value, 0)[0]
+		if type(value) != Token:
+			value = value[0]
+		namespace[tv] = value
 		tokens[i-1] = value
 		tokens.pop(i)
 		tokens.pop(i)
@@ -1090,11 +1269,17 @@ class Runner ():
 		name = tokens[0].value
 		# gets the end of the function call
 		end = 0
+		pd = 0
 		for i in range(len(tokens)):
 			t = tokens[i]
-			if t.type == PAR and t.value == ")":
-				end = i
-				break
+			if t.type == PAR:
+				if t.value == ")":
+					pd -= 1
+					if pd == 0:
+						end = i
+						break
+				else:
+					pd += 1
 		# gets the contents of the call
 		tokens = tokens[2:end]
 		args = []
@@ -1106,10 +1291,10 @@ class Runner ():
 			if t.type == SEP and t.value == ",":
 				if bd == 0:
 					positions.append(i)
-			elif t.type == SQU or t.type == CUR:
-				if t.value in "[{":
+			elif t.type in (SQU, CUR, PAR):
+				if t.value in "([{":
 					bd += 1
-				elif t.value in "]}":
+				elif t.value in ")]}":
 					bd -= 1
 		# evaluates function arguments
 		for i in range(len(positions)):
@@ -1143,12 +1328,21 @@ class Runner ():
 				args[i] = args[i].detokenize()
 			# runs the function
 			v = self.builtins[fname](*args)
-			# checks if the return valud was a string
+			# checks if the return value was a string
 			if type(v) == str:
 				v = '"' + v + '"'
 			# returns the output of the function as a token
 			if v != None:
-				return self.tokenize(str(v))[0]
+				tks = self.tokenize(str(v))
+				if tks[0].type not in (SQU, CUR):
+					return tks[0]
+				else:
+					if tks[0].type == SQU:
+						lst = self.doSQU(tks, 0)
+						# print(lst, "lst")
+						return lst[0]
+					else:
+						return self.doCUR(tks, 0)[0]
 		# function defined in the script
 		else:
 			# checks if the function name is an alias
@@ -1165,9 +1359,27 @@ class Runner ():
 					self.executionline = stored
 					return val
 			self.executionline = stored
+	def exit (self):
+		if self.flags["showfams"]:
+			self._displayfams()
+		if self.flags["showflags"]:
+			self._displayflags()
+		if self.flags["showvars"]:
+			print(self.vars)
+		if self.flags["showlocals"]:
+			print(self.localvars)
+		if self.flags["pel"]:
+			print(self.executionline)
+		if self.flags["funcnames"]:
+			print(self.funcnames)
+		if self.flags["funclines"]:
+			print(self.funclines)
+		if self.flags["funcargs"]:
+			print(self.funcargs)
 	def run (self):
 		global code
 		code = self.breaklines(code)
+		self.setflags()
 		self.hoistfuncs()
 		self.executionline = -1
 		while self.executionline < len(code):
@@ -1179,8 +1391,13 @@ class Runner ():
 			try:
 				self.runline(code[self.executionline])
 			except:
-				print(self.vars, self.localvars)
+				self.exit()
 				raise
+		self.exit()
+
+DB1 = 5
 
 runner = Runner()
 runner.run()
+
+# print("\x1b[38;2;255;0;0mHASH:", hash("y is true"), "\x1b[39m")

@@ -1,17 +1,16 @@
-//var = ({0:0}[0])
-//var = [0,[0]]
-//var = {0:{0:[0]}}
-//print(var)
-//print([0])
-//print((0 == "str"))
+#!ALL False
+#!TMP-LIST True
+#showvars True
+//#!DEBUG True
+//#!FUNCS False
+//#showlocals False
+//#showflags [(2, "tmp"), (4, (0, 4, "func"))]
 
-var = False
-var2 = False
+l = ["1"]
+//l2 = lcopy(l)
+//lpop(l, 0)
+linsert(l, 0, "0")
+lappend(l, "2")
 
-if (var) {
-	print("good")
-} elif (var2) {
-	print("BLKCNLCD")
-} else {
-	print("bad")
-}
+l2 = lcopy(l)
+print(ljoin(l2, " "))
