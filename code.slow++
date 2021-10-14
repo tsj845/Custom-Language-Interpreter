@@ -1,6 +1,8 @@
 #!ALL False
 #!TMP-LIST True
 #showvars True
+#EXCNOHANDLE True
+//#DEVDB True
 //#!DEBUG True
 //#!FUNCS False
 //#showlocals False
@@ -14,3 +16,7 @@ lappend(l, "2")
 
 l2 = lcopy(l)
 print(ljoin(l2, " "))
+print(*l2, "*print")
+
+x = -1
+x -= 1

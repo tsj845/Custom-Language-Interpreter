@@ -1,12 +1,27 @@
+__version = "slow++ a-1.0.1"
+
+"""
+help string
+"""
+
 # imports temporary functions
 from temp import *
 
 # clears the console
-print("\x1bc", end="\n")
+def _clr():
+	print("\x1bc")
 
-f = open("code.slow++")
-code = f.read()
-f.close()
+_clr()
+
+code = []
+
+def loadcode ():
+	global code
+	f = open("code.slow++")
+	code = f.read()
+	f.close()
+
+loadcode()
 
 # token types
 INT, STR, MAT, ASS, REF, PAR, LOG, EQU, FUN, INV, CUR, SQU, SEP, KEY, LIT, LST, DCT, SYM = "INT", "STR", "MAT", "ASS", "REF", "PAR", "LOG", "EQU", "FUN", "INV", "CUR", "SQU", "SEP", "KEY", "LIT", "LST", "DCT", "SYM"
@@ -105,6 +120,12 @@ class Runner ():
 			"print":print,
 			"input":input,
 			"hash":hash,
+			"dir":dir,
+			"len":len,
+			"pow":pow,
+			"round":round,
+			"min":min,
+			"max":max,
 		}
 		# the names of all funcitons in program
 		self.funcnames = list(self.builtins.keys())
@@ -118,6 +139,11 @@ class Runner ():
 		self.sfconfig = [(0, "*")]
 		# flags
 		self.flags = {
+			# flags used for configuring the interface
+			"intce" : False,
+			# flags only used for debugging the interpreter
+			"DEVDB" : False,
+			"EXCNOHANDLE" : False,
 			# debugging flags
 			"showfams" : False,
 			"showflags" : False,
@@ -263,8 +289,25 @@ class Runner ():
 			self._flagshow(line)
 			return
 		val = eval(line[line.index(" ")+1:])
-		if prop in self.flags:
-			self.flags[prop] = val
+		if True or prop[0].islower():
+			if prop in self.flags:
+				self.flags[prop] = val
+	def _gettruth (self, name):
+		if name[0] != "!":
+			return self.flags[name]
+		for n in self.ffams[name]:
+			if n[0] == "!":
+				v = self._gettruth(n[1:])
+			else:
+				v = self.flags[n]
+			if not v:
+				return False
+		return True
+	def _toggleflag (self, name):
+		if name[0] == "!":
+			self._setfamily(f"#{name} {not self._gettruth(name)}")
+		else:
+			self.flags[name] = not self.flags[name]
 	def setflags (self):
 		global code
 		for i in range(len(code)):
@@ -341,6 +384,7 @@ class Runner ():
 		"""
 		tokenizes a line of code
 		"""
+		print(line)
 		# current position
 		i = 0
 		# the token value that is being built
@@ -365,8 +409,9 @@ class Runner ():
 			chr = line[i]
 			# token type defaults to invalid
 			type = INV
+			print(chr)
 			# if the character is a digit
-			if chr.isdigit() or chr == "-":
+			if chr.isdigit() or (i<len(line)-1 and chr == "-" and line[i+1].isdigit()):
 				# type is int
 				type = INT
 				# builds the token's value
@@ -455,6 +500,16 @@ class Runner ():
 							part = chr+"="
 							# ignore the next character
 							cont = True
+						elif line[i+1] == chr and chr in "+-":
+							if chr == "+":
+								tokens.append(Token(ASS, "+="))
+							else:
+								tokens.append(Token(ASS, "-="))
+							print(tokens)
+							type = INT
+							part = "1"
+							cont = True
+					print(tokens, type, chr, part, cont)
 				# if the character is a logical operator
 				elif chr in "^%&|!":
 					# type is logical
@@ -514,8 +569,24 @@ class Runner ():
 			tokens.append(Token(type, part))
 			# increments the position
 			i += 1
+		if self.flags["DEVDB"]:
+			print(tokens)
 		# returns the list of tokens
 		return tokens
+	def hoistclasses (self):
+		# start of class
+		start = 0
+		isclass = False
+		notclass = False
+		name = ""
+		args = []
+		for i in range(len(code)):
+			line = code[i]
+			if "class " in line:
+				if line.index("class ") == 0:
+					isclass = True
+					start = i+1
+					name = line[6:line.index("(")].rstrip()
 	# hoists function definitions
 	def hoistfuncs (self):
 		# start of funcion
@@ -538,7 +609,7 @@ class Runner ():
 					# sets start
 					start = i+1
 					# sets name
-					name = line[5:line.index("(")].rstrip(" ")
+					name = line[5:line.index("(")].rstrip()
 					# sets args
 					args = line[line.index("(")+1:line.index(")")]
 					args = ''.join(args.split(" "))
@@ -850,7 +921,6 @@ class Runner ():
 				return tokens
 		return tokens
 	def doSQU (self, tokens, i, inreturn=False):
-		global DB1
 		tokens = tokens.copy()
 		if i > 0 and tokens[i-1].type in SUBSCRIPT:
 			val, ending = self.retreive(tokens, i)
@@ -859,9 +929,6 @@ class Runner ():
 			nt.extend(tokens[ending+1:])
 			tokens = nt
 		else:
-			if DB1 == 0:
-				raise Exception()
-			DB1 -= 1
 			val, ending = self.assemblelist(tokens, i)
 			nt = tokens[:i]
 			nt.append(val)
@@ -879,6 +946,8 @@ class Runner ():
 			namespace = self.localvars
 		tokens = tokens.copy()
 		token = tokens[i]
+		if self.flags["DEVDB"]:
+			print(tokens, token)
 		if tokens[i-1].type != REF:
 			self.ERROR(5)
 		if tokens[i+1].type == REF:
@@ -907,6 +976,8 @@ class Runner ():
 		# tv1 = self.evaltokens(tokens[:i])
 		tv2 = self.evaltokens(tokens[i+1:])
 		chosen = self.vars if tv in self.vars else self.localvars
+		if self.flags["DEVDB"]:
+			print(chosen, chosen[tv], tv2, sep="\n")
 		v = token.value
 		if v == "=":
 			value = tv2.detokenize()
@@ -1001,6 +1072,8 @@ class Runner ():
 	def doMAT (self, tokens, i, inreturn=False):
 		tokens = tokens.copy()
 		token = tokens[i]
+		if self.flags["DEVDB"]:
+			print(tokens, token)
 		if tokens[i+1].type == PAR and tokens[i+1].value == "(":
 			calc = self.evalpar(tokens, i+1, inreturn)
 			tokens = tokens[:i+1]
@@ -1097,6 +1170,8 @@ class Runner ():
 		tokens.pop(i)
 		return tokens
 	def evaltokens (self, tokens, inreturn=False):
+		if self.flags["DEVDB"]:
+			print(tokens)
 		notdone = True
 		while notdone:
 			notdone = False
@@ -1285,17 +1360,42 @@ class Runner ():
 		args = []
 		positions = [-1]
 		bd = 0
-		# gets the positions of item seperators
-		for i in range(len(tokens)):
-			t = tokens[i]
-			if t.type == SEP and t.value == ",":
-				if bd == 0:
-					positions.append(i)
-			elif t.type in (SQU, CUR, PAR):
-				if t.value in "([{":
-					bd += 1
-				elif t.value in ")]}":
-					bd -= 1
+		posf = True
+		while posf:
+			posf = False
+			# gets the positions of item seperators
+			for i in range(len(tokens)):
+				t = tokens[i]
+				if t.type == SEP and t.value == ",":
+					if bd == 0:
+						positions.append(i)
+				elif t.type in (SQU, CUR, PAR):
+					if t.value in "([{":
+						bd += 1
+					elif t.value in ")]}":
+						bd -= 1
+			for i in range(len(positions)):
+				if i == len(positions)-1:
+					at = tokens[positions[i]+1:]
+				else:
+					at = tokens[positions[i]+1:positions[i+1]]
+				if at[0].type == "MAT" and at[0].value == "*":
+					nt = tokens[:positions[i]+1]
+					it = tokens[positions[i]+2].detokenize()
+					for l in range(len(it)):
+						v = it[l][i]
+						if type(v) == str:
+							v = '"' + v + '"'
+						elif type(v) not in (list, dict):
+							v = str(v)
+						nt.append(self.tokenize(v)[0])
+						nt.append(Token(SEP, ","))
+					if i < len(positions)-1:
+						nt.extend(tokens[positions[i+1]+1:])
+					tokens = nt
+					positions = [-1]
+					posf = True
+					break
 		# evaluates function arguments
 		for i in range(len(positions)):
 			if i == len(positions)-1:
@@ -1395,9 +1495,206 @@ class Runner ():
 				raise
 		self.exit()
 
-DB1 = 5
-
 runner = Runner()
 runner.run()
 
+lime, red, orange, yellow, brown, normal, green, blue, cyan, violet, magenta = "\x1b[38;2;0;255;0m", "\x1b[38;2;255;0;0m", "\x1b[38;2;250;132;33m", "\x1b[38;2;255;255;40m", "\x1b[38;2;225;150;0m", "\x1b[39m", "\x1b[38;2;0;200;0m", "\x1b[38;2;0;0;255m", "\x1b[38;2;0;100;255m", "\x1b[38;2;255;255;0m", "\x1b[38;2;255;255;0m"
+
+# yellow = "\x1b[38;2;238;232;44m"
+
+# config
+spi, spo, norm, spn, sptc, spe, warn = lime, red, yellow, orange, lime, red, brown
+# yellow = "\x1b[38;2;255;0;0m"
+
+printlogger, inputlogger, lenlogger = [], [], []
+
+def _getcharlen (text):
+	i = 0
+	clen = 0
+	while i < len(text):
+		chr = text[i]
+		if chr == "\x1b":
+			while not text[i].isalpha():
+				i += 1
+				if i >= len(text):
+					return clen
+			continue
+		clen += 1
+		i += 1
+	return clen
+
+def slowprint (text, **kwargs):
+	printlogger.append((text, kwargs))
+	print(spn+text+norm, **kwargs)
+
+def slowinput (text):
+	inputlogger.append(text)
+	clen = _getcharlen(text)
+	# does magic so that the input wont wrap onto the same line because of ANSI escape codes
+	#+"\x1b[1G"
+	print(spn+text+norm+f"\x1b[{clen}G", end="")
+	return input("")
+
+# slowprint(f"{yellow}test")
+
+def _formatchoices (choices):
+	fin = "("
+	for i in range(len(choices)):
+		fin += str(choices[i])
+		if i < len(choices)-1:
+			fin += ", "
+	fin += ")"
+	return fin
+
+def _ask (prompt, choices):
+	slowprint(orange+prompt)
+	pc = _formatchoices(choices)
+	v = slowinput(f"enter your choice {pc}: ")
+	while True:
+		if v.isdigit():
+			v = int(v)
+		if v in choices:
+			return v
+		print("\x1b[2K\x1b[1A"*2, end="")
+		slowprint(prompt)
+		v = slowinput(f"enter your choice {pc}:")
+
+def _cprintffam (fam):
+	for n in runner.ffams[fam[1:]]:
+		if n[0] == "!":
+			_cprintffam(n)
+		else:
+			slowprint(n)
+
+def _configsequence ():
+	slowprint(f"entering {sptc}slow++{spn} config")
+	while True:
+		v = slowinput(f"{spi}[slow++ config]: ")
+		if v == "clr":
+			_clr()
+			continue
+		if v == "exit":
+			if runner.flags["intce"]:
+				choice = _ask("are you sure?", ("y", "n"))
+				if choice == "y":
+					slowprint(f"{red}leaving {sptc}slow++{red} config")
+					break
+			else:
+				slowprint(f"{red}leaving {sptc}slow++{red} config")
+				break
+		elif v == "lst":
+			for flag in runner.flags:
+				slowprint(flag)
+		elif v.count(" ") > 0:
+			try:
+				v = v.split(" ")
+				if len(v) == 2:
+					if v[1] == "t":
+						runner._toggleflag(v[0])
+						slowprint(str(runner._gettruth(v[0])))
+					elif v[1] == "g":
+						slowprint(str(runner._gettruth(v[0])))
+					elif v[0] == "lst":
+						if v[1] == "f":
+							for f in runner.ffams:
+								slowprint(f)
+						elif v[1] in runner.ffams:
+							_cprintffam("!"+v[1])
+				else:
+					if v[1] == "s":
+						if runner._gettruth(v[0]) != eval(v[2]):
+							runner._toggleflag(v[0])
+						slowprint(str(runner._gettruth(v[0])))
+			except:
+				slowprint(f"{spe}{'{config error}'}")
+
+_helpkeywords = {
+	"help" : f"{sptc}slow++{spn} help interface: type keywords for a list of keywords",
+	"config" : "configuration: in the config utility type \"lst\" for a list of all config flags"
+}
+
+def _helpsequence ():
+	slowprint(f"entering {sptc}slow++{spn} help")
+	while True:
+		v = slowinput(f"{spi}[slow++ help]: ")
+		if v == "clr":
+			_clr()
+			continue
+		if v == "exit" or v == "":
+			if runner.flags["intce"]:
+				choice = _ask("are you sure?", ("y", "n"))
+				if choice == "y":
+					slowprint(f"{red}leaving {sptc}slow++{red} help")
+					break
+			else:
+				slowprint(f"{red}leaving {sptc}slow++{red} help")
+				break
+		elif v == "version":
+			slowprint(f"running {sptc}slow++{spn} version: {__version}")
+		elif len(v) > 2 and v[:3] == "log":
+			if v == "log":
+				slowprint(f"{warn}this feature is currently unavailable")
+		elif v == "keywords":
+			for keyword in _helpkeywords:
+				slowprint(keyword)
+		elif v in _helpkeywords:
+			slowprint(_helpkeywords[v])
+		else:
+			slowprint(f"{spe}unknown keyword")
+
+def slowpp ():
+	slowprint(f"starting {sptc}slow++{spn} Version: {__version}")
+	while True:
+		v = slowinput(f"{spi}[slow++ in]: ")
+		if v == "reset":
+			global runner
+			_clr()
+			loadcode()
+			runner = Runner()
+			runner.run()
+			break
+		elif v == "clr":
+			_clr()
+			continue
+		elif v == "exit":
+			if runner.flags["intce"]:
+				choice = _ask("are you sure?", ("y", "n"))
+				if choice == "y":
+					slowprint(f"{red}leaving {sptc}slow++{red} runner")
+					return True
+			else:
+				slowprint(f"{red}leaving {sptc}slow++{red} runner")
+				return True
+		elif v == "help":
+			_helpsequence()
+		elif v == "config":
+			_configsequence()
+		elif len(v) > 2 and v[:2] == "--":
+			if v == "--dball":
+				runner.flags["DEVDB"] = True
+		elif len(v) > 7 and v[:6] == "python":
+			try:
+				r = eval(v[7:], globals())
+				slowprint(f"{spo}[slow++ out]: {r}")
+			except:
+				if runner.flags["EXCNOHANDLE"]:
+					raise
+				else:
+					slowprint(f"{spe}{'{slow++ error}'}")
+		else:
+			try:
+				r = runner.evaltokens(runner.tokenize(v))
+				if type(r) == Token:
+					r = r.detokenize()
+				slowprint(f"{spo}[slow++ out]: {r}")
+			except:
+				if runner.flags["EXCNOHANDLE"]:
+					raise
+				else:
+					slowprint(f"{spe}{'{slow++ error}'}")
+
 # print("\x1b[38;2;255;0;0mHASH:", hash("y is true"), "\x1b[39m")
+
+while True:
+	if slowpp():
+		break
