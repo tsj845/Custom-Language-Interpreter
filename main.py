@@ -289,7 +289,7 @@ class Runner ():
 			self._flagshow(line)
 			return
 		val = eval(line[line.index(" ")+1:])
-		if True or prop[0].islower():
+		if prop[0].islower():
 			if prop in self.flags:
 				self.flags[prop] = val
 	def _gettruth (self, name):
@@ -1532,8 +1532,9 @@ def slowinput (text):
 	clen = _getcharlen(text)
 	# does magic so that the input wont wrap onto the same line because of ANSI escape codes
 	#+"\x1b[1G"
-	print(spn+text+norm+f"\x1b[{clen}G", end="")
-	return input("")
+	# print(spn+text+norm+f"\x1b[{clen}G", end="")
+	# return input("")
+	return input(spn+text+norm)
 
 # slowprint(f"{yellow}test")
 
@@ -1683,6 +1684,7 @@ def slowpp ():
 					slowprint(f"{spe}{'{slow++ error}'}")
 		else:
 			try:
+				print("\x1b[39m", end="")
 				r = runner.evaltokens(runner.tokenize(v))
 				if type(r) == Token:
 					r = r.detokenize()
@@ -1695,6 +1697,11 @@ def slowpp ():
 
 # print("\x1b[38;2;255;0;0mHASH:", hash("y is true"), "\x1b[39m")
 
-while True:
-	if slowpp():
-		break
+try:
+	while True:
+		if slowpp():
+			break
+except:
+	print("\x1b[39m")
+	raise
+print("\x1b[39m")
