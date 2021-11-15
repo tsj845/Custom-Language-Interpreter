@@ -569,8 +569,6 @@ class Runner ():
 			tokens.append(Token(type, part))
 			# increments the position
 			i += 1
-		if self.flags["DEVDB"]:
-			print(tokens)
 		# returns the list of tokens
 		return tokens
 	def hoistclasses (self):
@@ -946,8 +944,6 @@ class Runner ():
 			namespace = self.localvars
 		tokens = tokens.copy()
 		token = tokens[i]
-		if self.flags["DEVDB"]:
-			print(tokens, token)
 		if tokens[i-1].type != REF:
 			self.ERROR(5)
 		if tokens[i+1].type == REF:
@@ -976,8 +972,6 @@ class Runner ():
 		# tv1 = self.evaltokens(tokens[:i])
 		tv2 = self.evaltokens(tokens[i+1:])
 		chosen = self.vars if tv in self.vars else self.localvars
-		if self.flags["DEVDB"]:
-			print(chosen, chosen[tv], tv2, sep="\n")
 		v = token.value
 		if v == "=":
 			value = tv2.detokenize()
@@ -1072,8 +1066,6 @@ class Runner ():
 	def doMAT (self, tokens, i, inreturn=False):
 		tokens = tokens.copy()
 		token = tokens[i]
-		if self.flags["DEVDB"]:
-			print(tokens, token)
 		if tokens[i+1].type == PAR and tokens[i+1].value == "(":
 			calc = self.evalpar(tokens, i+1, inreturn)
 			tokens = tokens[:i+1]
@@ -1170,8 +1162,6 @@ class Runner ():
 		tokens.pop(i)
 		return tokens
 	def evaltokens (self, tokens, inreturn=False):
-		if self.flags["DEVDB"]:
-			print(tokens)
 		notdone = True
 		while notdone:
 			notdone = False
